@@ -12,6 +12,7 @@ generator client {
 // -------------------------------------------------------------
 
 enum GlobalRole {
+  WORKER
   TALENT
   CLIENT
   ADMIN
@@ -43,6 +44,7 @@ model User {
   roadmaps                  UserRoadmap[]
   submissions               ProjectSubmission[]
   applications              TaskApplication[]
+  tasksPosted               MarketplaceTask[]          @relation("ClientTasks")
   contractsAsTalent         Contract[]                 @relation("TalentContracts")
   contractsAsClient         Contract[]                 @relation("ClientContracts")
   reviewsWritten            Review[]                   @relation("ReviewsWritten")
@@ -303,7 +305,7 @@ enum ProjectStatus {
 model MarketplaceTask {
   id                        String              @id @default(uuid())
   clientId                  String
-  client                    User                @relation("ClientContracts", fields: [clientId], references: [id])
+  client                    User                @relation("ClientTasks", fields: [clientId], references: [id])
   title                     String
   description               String
   tier                      TaskTier

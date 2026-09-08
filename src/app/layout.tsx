@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { AuthProvider } from "@/lib/auth/context";
 import { UporaStoreProvider } from "@/lib/store/useUporaStore";
 import { Header } from "@/components/layout/header";
 import { MobileNav } from "@/components/layout/mobile-nav";
@@ -18,11 +19,13 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body className="min-h-screen bg-canvas-dark text-text-primary antialiased flex flex-col selection:bg-brand-growth selection:text-canvas-dark">
-        <UporaStoreProvider>
-          <Header />
-          <main className="flex-1 pb-20 lg:pb-12">{children}</main>
-          <MobileNav />
-        </UporaStoreProvider>
+        <AuthProvider>
+          <UporaStoreProvider>
+            <Header />
+            <main className="flex-1 pb-20 lg:pb-12">{children}</main>
+            <MobileNav />
+          </UporaStoreProvider>
+        </AuthProvider>
       </body>
     </html>
   );

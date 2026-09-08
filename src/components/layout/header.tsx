@@ -3,7 +3,10 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useUpora } from "@/lib/store/useUporaStore";
+import { useAuth } from "@/lib/auth/context";
 import { formatCurrency } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Compass,
   Briefcase,
@@ -12,11 +15,15 @@ import {
   BookOpen,
   Award,
   Search,
+  LogOut,
+  LogIn,
+  UserCheck,
 } from "lucide-react";
 
 export function Header() {
   const pathname = usePathname();
   const { profile, financials } = useUpora();
+  const { user, logout, isLoading } = useAuth();
 
   const navLinks = [
     { href: "/", label: "Dashboard", icon: Compass },
@@ -75,8 +82,8 @@ export function Header() {
           </nav>
         </div>
 
-        {/* User Telemetry & Wallet Badge */}
-        <div className="flex items-center gap-3 sm:gap-4">
+        {/* User Telemetry & Auth Section */}
+        <div className="flex items-center gap-2.5 sm:gap-4">
           {/* Earnings / Balance Badge */}
           <Link
             href="/finance"
@@ -88,31 +95,52 @@ export function Header() {
             </span>
           </Link>
 
-          {/* Reputation Badge */}
-          <Link
-            href="/passport"
-            className="hidden sm:flex items-center gap-1.5 rounded-lg border border-border-subtle bg-surface-subtle px-2.5 py-1.5 text-xs"
-            title="Verified Reputation Score based on project assessments and on-time client deliveries"
-          >
-            <ShieldCheck className="h-3.5 w-3.5 text-blue-400" />
-            <span className="font-mono font-medium text-text-primary">
-              {profile.reputationScore.toFixed(1)}%
-            </span>
-          </Link>
+          {/* Authentication State */}
+          {user ? (
+            <div className="flex items-center gap-2.5 sm:gap-3">
+              <Link
+                href="/passport"
+                className="flex items-center gap-2 rounded-lg p-1 transition-colors hover:bg-surface-subtle focus:outline-none"
+              >
+                <div className="h-8 w-8 rounded-full border border-border-subtle bg-brand-growth/15 text-brand-growth overflow-hidden flex items-center justify-center font-bold text-xs">
+                  {user.fullName.slice(0, 2).toUpperCase()}
+                </div>
+                <div className="hidden xl:block text-left text-xs">
+                  <div className="font-semibold text-text-primary truncate max-w-[120px]">
+                    {user.fullName}
+                  </div>
+                  <div className="text-[10px] text-text-secondary flex items-center gap-1">
+                    <span className="capitalize">{user.role.toLowerCase()}</span>
+                    <span>·</span>
+                    <span className="text-brand-growth">Verified</span>
+                  </div>
+                </div>
+              </Link>
 
-          {/* User Profile Avatar Link */}
-          <Link
-            href="/passport"
-            className="flex items-center gap-2.5 rounded-lg p-1 transition-colors hover:bg-surface-subtle focus:outline-none focus:ring-2 focus:ring-brand-focus"
-          >
-            <div className="h-8 w-8 rounded-full border border-border-subtle bg-surface-subtle overflow-hidden flex items-center justify-center font-bold text-xs text-text-primary">
-              ME
+              <button
+                onClick={() => logout()}
+                className="rounded-lg p-2 text-text-secondary hover:bg-surface-subtle hover:text-rose-400 transition-colors"
+                title="Sign Out"
+                aria-label="Sign Out"
+              >
+                <LogOut className="h-4 w-4" />
+              </button>
             </div>
-            <div className="hidden xl:block text-left text-xs">
-              <div className="font-semibold text-text-primary">{profile.fullName}</div>
-              <div className="text-[10px] text-text-secondary">Talent · Verified</div>
+          ) : !isLoading ? (
+            <div className="flex items-center gap-2">
+              <Link href="/login">
+                <Button size="sm" variant="ghost" className="text-xs">
+                  <LogIn className="h-3.5 w-3.5 mr-1" />
+                  <span>Sign In</span>
+                </Button>
+              </Link>
+              <Link href="/register">
+                <Button size="sm" variant="primary" className="text-xs">
+                  <span>Register</span>
+                </Button>
+              </Link>
             </div>
-          </Link>
+          ) : null}
         </div>
       </div>
     </header>
