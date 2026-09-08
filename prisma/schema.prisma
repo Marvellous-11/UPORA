@@ -1,0 +1,593 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// -------------------------------------------------------------
+// USER & IDENTITY SYSTEM
+// -------------------------------------------------------------
+
+enum GlobalRole {
+  TALENT
+  CLIENT
+  ADMIN
+  VERIFIER
+  MODERATOR
+}
+
+enum IdentityVerificationStatus {
+  UNVERIFIED
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+model User {
+  id                        String                     @id @default(uuid())
+  email                     String                     @unique
+  passwordHash              String?
+  role                      GlobalRole                 @default(TALENT)
+  isEmailVerified           Boolean                    @default(false)
+  identityStatus            IdentityVerificationStatus @default(UNVERIFIED)
+  twoFactorEnabled          Boolean                    @default(false)
+  twoFactorSecret           String?
+  createdAt                 DateTime                   @default(now())
+  updatedAt                 DateTime                   @updatedAt
+  deletedAt                 DateTime?
+
+  profile                   Profile?
+  roadmaps                  UserRoadmap[]
+  submissions               ProjectSubmission[]
+  applications              TaskApplication[]
+  contractsAsTalent         Contract[]                 @relation("TalentContracts")
+  contractsAsClient         Contract[]                 @relation("ClientContracts")
+  reviewsWritten            Review[]                   @relation("ReviewsWritten")
+  reviewsReceived           Review[]                   @relation("ReviewsReceived")
+  wallet                    Wallet?
+  financialGoals            FinancialGoal[]
+  financialLogs             FinancialLog[]
+  auditLogs                 AuditLog[]
+  reputationHistory         ReputationLog[]
+
+  @@index([email])
+  @@index([role])
+}
+
+model Profile {
+  id                        String         @id @default(uuid())
+  userId                    String         @unique
+  user                      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fullName                  String
+  headline                  String?
+  bio                       String?
+  avatarUrl                 String?
+  countryCode               String         // ISO 3166-1 alpha-2 (e.g. US, NG, GB, KE, IN)
+  timezone                  String         // IANA timezone (e.g. Africa/Lagos, America/New_York)
+  preferredCurrency         String         @default("USD") // ISO 4217
+  languageCode              String         @default("en")  // ISO 639-1
+  availabilityHoursPerWeek  Int            @default(20)
+  targetAnnualIncome        Decimal?       @db.Decimal(12, 2)
+  isPassportPublic          Boolean        @default(true)
+  isEmployerSearchable      Boolean        @default(true)
+  reputationScore           Decimal        @default(100.00) @db.Decimal(5, 2)
+  verifiedSkillsCount       Int            @default(0)
+  completedProjectsCount    Int            @default(0)
+  onboardingCompleted       Boolean        @default(false)
+  createdAt                 DateTime       @default(now())
+  updatedAt                 DateTime       @updatedAt
+
+  skills                    UserSkill[]
+  portfolioItems            PortfolioItem[]
+
+  @@index([countryCode])
+  @@index([reputationScore])
+}
+
+// -------------------------------------------------------------
+// CAREER NAVIGATOR & SKILL ENGINE
+// -------------------------------------------------------------
+
+model Skill {
+  id                        String         @id @default(uuid())
+  slug                      String         @unique
+  name                      String
+  category                  String         // e.g. "Software", "Data", "Operations", "Design"
+  description               String
+  difficultyLevel           String         // "BEGINNER", "INTERMEDIATE", "ADVANCED"
+  isHighDemand              Boolean        @default(false)
+  createdAt                 DateTime       @default(now())
+  updatedAt                 DateTime       @updatedAt
+
+  userSkills                UserSkill[]
+  learningModules           LearningModule[]
+  careerSkillRequirements   CareerSkillRequirement[]
+
+  @@index([category])
+  @@index([slug])
+}
+
+enum SkillVerificationTier {
+  SELF_REPORTED
+  ASSESSED
+  PROJECT_VERIFIED
+  CLIENT_VALIDATED
+}
+
+model UserSkill {
+  id                        String                @id @default(uuid())
+  profileId                 String
+  profile                   Profile               @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  skillId                   String
+  skill                     Skill                 @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  tier                      SkillVerificationTier @default(SELF_REPORTED)
+  confidenceScore           Decimal               @default(0.00) @db.Decimal(5, 2)
+  verifiedAt                DateTime?
+  evidenceSubmissionId      String?               @unique
+  createdAt                 DateTime              @default(now())
+  updatedAt                 DateTime              @updatedAt
+
+  evidenceSubmission        ProjectSubmission?    @relation(fields: [evidenceSubmissionId], references: [id])
+
+  @@unique([profileId, skillId])
+  @@index([tier])
+}
+
+model CareerPath {
+  id                        String         @id @default(uuid())
+  slug                      String         @unique
+  title                     String
+  description               String
+  averageGlobalSalaryUSD    Decimal        @db.Decimal(10, 2)
+  entryDifficulty           String         // "EASY", "MODERATE", "STEEP"
+  riskFactors               String[]
+  isActive                  Boolean        @default(true)
+  createdAt                 DateTime       @default(now())
+  updatedAt                 DateTime       @updatedAt
+
+  requiredSkills            CareerSkillRequirement[]
+  userRoadmaps              UserRoadmap[]
+}
+
+model CareerSkillRequirement {
+  id                        String         @id @default(uuid())
+  careerPathId              String
+  careerPath                CareerPath     @relation(fields: [careerPathId], references: [id], onDelete: Cascade)
+  skillId                   String
+  skill                     Skill          @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  importance                Int            @default(5)
+  isMandatory               Boolean        @default(true)
+
+  @@unique([careerPathId, skillId])
+}
+
+model UserRoadmap {
+  id                        String         @id @default(uuid())
+  userId                    String
+  user                      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  careerPathId              String
+  careerPath                CareerPath     @relation(fields: [careerPathId], references: [id], onDelete: Cascade)
+  currentStepIndex          Int            @default(0)
+  totalStepsCount           Int            @default(1)
+  isCompleted               Boolean        @default(false)
+  generatedAnalysis         Json
+  createdAt                 DateTime       @default(now())
+  updatedAt                 DateTime       @updatedAt
+
+  milestones                RoadmapMilestone[]
+
+  @@index([userId])
+}
+
+model RoadmapMilestone {
+  id                        String         @id @default(uuid())
+  roadmapId                 String
+  roadmap                   UserRoadmap    @relation(fields: [roadmapId], references: [id], onDelete: Cascade)
+  stepOrder                 Int
+  title                     String
+  description               String
+  actionType                String         // "LEARN", "PRACTICE_PROJECT", "ASSESSMENT", "APPLY_TASK"
+  targetEntityId            String?
+  isCompleted               Boolean        @default(false)
+  completedAt               DateTime?
+
+  @@unique([roadmapId, stepOrder])
+}
+
+// -------------------------------------------------------------
+// PRACTICAL LEARNING & EVALUATION ENGINE
+// -------------------------------------------------------------
+
+model LearningModule {
+  id                        String         @id @default(uuid())
+  skillId                   String
+  skill                     Skill          @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  title                     String
+  slug                      String         @unique
+  summary                   String
+  contentMarkdown           String
+  estimatedMinutes          Int
+  prerequisites             String[]
+  createdAt                 DateTime       @default(now())
+  updatedAt                 DateTime       @updatedAt
+
+  challenges                PracticalChallenge[]
+}
+
+model PracticalChallenge {
+  id                        String         @id @default(uuid())
+  learningModuleId          String
+  learningModule            LearningModule @relation(fields: [learningModuleId], references: [id], onDelete: Cascade)
+  title                     String
+  problemBrief              String
+  starterCodeOrDatasetUrl   String?
+  expectedDeliverableFormat String
+  rubricCriteria            Json
+  passingScore              Int            @default(80)
+  createdAt                 DateTime       @default(now())
+  updatedAt                 DateTime       @updatedAt
+
+  submissions               ProjectSubmission[]
+}
+
+enum SubmissionStatus {
+  SUBMITTED
+  EVALUATING
+  PASSED
+  REJECTED
+}
+
+model ProjectSubmission {
+  id                        String              @id @default(uuid())
+  challengeId               String
+  challenge                 PracticalChallenge  @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+  userId                    String
+  user                      User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  submissionUrl             String
+  deliverableContent        String?
+  status                    SubmissionStatus    @default(SUBMITTED)
+  evaluationScore           Int?
+  feedbackSummary           String?
+  rubricBreakdown           Json?
+  evaluatorType             String
+  attemptNumber             Int                 @default(1)
+  createdAt                 DateTime            @default(now())
+  updatedAt                 DateTime            @updatedAt
+
+  verifiedSkill             UserSkill?
+  portfolioItem             PortfolioItem?
+
+  @@index([userId])
+  @@index([challengeId])
+}
+
+model PortfolioItem {
+  id                        String              @id @default(uuid())
+  profileId                 String
+  profile                   Profile             @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  submissionId              String?             @unique
+  submission                ProjectSubmission?  @relation(fields: [submissionId], references: [id])
+  title                     String
+  description               String
+  liveDemoUrl               String?
+  repositoryUrl             String?
+  screenshotUrl             String?
+  verifiedBadge             Boolean             @default(false)
+  createdAt                 DateTime            @default(now())
+  updatedAt                 DateTime            @updatedAt
+
+  @@index([profileId])
+}
+
+// -------------------------------------------------------------
+// WORKPLACE, CONTRACTS & ESCROW SYSTEM
+// -------------------------------------------------------------
+
+enum TaskTier {
+  FOUNDATIONAL
+  INTERMEDIATE
+  ADVANCED
+}
+
+enum ProjectStatus {
+  DRAFT
+  OPEN_FOR_APPLICATIONS
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+model MarketplaceTask {
+  id                        String              @id @default(uuid())
+  clientId                  String
+  client                    User                @relation("ClientContracts", fields: [clientId], references: [id])
+  title                     String
+  description               String
+  tier                      TaskTier
+  budgetAmount              Decimal             @db.Decimal(10, 2)
+  currency                  String              @default("USD")
+  requiredSkills            String[]
+  status                    ProjectStatus       @default(OPEN_FOR_APPLICATIONS)
+  deadline                  DateTime
+  createdAt                 DateTime            @default(now())
+  updatedAt                 DateTime            @updatedAt
+
+  applications              TaskApplication[]
+  contract                  Contract?
+
+  @@index([tier])
+  @@index([status])
+}
+
+enum ApplicationStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  WITHDRAWN
+}
+
+model TaskApplication {
+  id                        String              @id @default(uuid())
+  taskId                    String
+  task                      MarketplaceTask     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  talentId                  String
+  talent                    User                @relation(fields: [talentId], references: [id], onDelete: Cascade)
+  proposalPitch             String
+  proposedAmount            Decimal             @db.Decimal(10, 2)
+  status                    ApplicationStatus   @default(PENDING)
+  createdAt                 DateTime            @default(now())
+  updatedAt                 DateTime            @updatedAt
+
+  @@unique([taskId, talentId])
+}
+
+enum ContractStatus {
+  AWAITING_ESCROW
+  ACTIVE
+  IN_REVISION
+  COMPLETED
+  DISPUTED
+  REFUNDED
+}
+
+model Contract {
+  id                        String              @id @default(uuid())
+  taskId                    String              @unique
+  task                      MarketplaceTask     @relation(fields: [taskId], references: [id])
+  clientId                  String
+  client                    User                @relation("ClientContracts", fields: [clientId], references: [id])
+  talentId                  String
+  talent                    User                @relation("TalentContracts", fields: [talentId], references: [id])
+  totalAmount               Decimal             @db.Decimal(10, 2)
+  currency                  String              @default("USD")
+  platformFeePercent        Decimal             @default(10.00) @db.Decimal(4, 2)
+  status                    ContractStatus      @default(AWAITING_ESCROW)
+  createdAt                 DateTime            @default(now())
+  updatedAt                 DateTime            @updatedAt
+
+  milestones                ContractMilestone[]
+  reviews                   Review[]
+  dispute                   ContractDispute?
+
+  @@index([clientId])
+  @@index([talentId])
+  @@index([status])
+}
+
+enum MilestoneStatus {
+  PENDING_ESCROW
+  ESCROWED
+  SUBMITTED
+  APPROVED
+  PAID_OUT
+}
+
+model ContractMilestone {
+  id                        String              @id @default(uuid())
+  contractId                String
+  contract                  Contract            @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  title                     String
+  amount                    Decimal             @db.Decimal(10, 2)
+  dueDate                   DateTime
+  status                    MilestoneStatus     @default(PENDING_ESCROW)
+  deliverableNote           String?
+  deliverableAttachmentUrl  String?
+  revisionCount             Int                 @default(0)
+  createdAt                 DateTime            @default(now())
+  updatedAt                 DateTime            @updatedAt
+
+  paymentTransaction        PaymentTransaction?
+
+  @@index([contractId])
+}
+
+model Review {
+  id                        String              @id @default(uuid())
+  contractId                String
+  contract                  Contract            @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  authorId                  String
+  author                    User                @relation("ReviewsWritten", fields: [authorId], references: [id])
+  targetUserId              String
+  targetUser                User                @relation("ReviewsReceived", fields: [targetUserId], references: [id])
+  ratingScore               Int
+  feedbackPublic            String
+  feedbackPrivate           String?
+  createdAt                 DateTime            @default(now())
+
+  @@unique([contractId, authorId])
+}
+
+model ContractDispute {
+  id                        String              @id @default(uuid())
+  contractId                String              @unique
+  contract                  Contract            @relation(fields: [contractId], references: [id])
+  openedById                String
+  reason                    String
+  status                    String
+  resolutionNotes           String?
+  createdAt                 DateTime            @default(now())
+  resolvedAt                DateTime?
+}
+
+// -------------------------------------------------------------
+// EXTERNAL OPPORTUNITY CRAWLER & TRUST SYSTEM
+// -------------------------------------------------------------
+
+enum OpportunityType {
+  JOB
+  INTERNSHIP
+  APPRENTICESHIP
+  FREELANCE
+  SCHOLARSHIP
+  FELLOWSHIP
+  GRANT
+  MENTORSHIP
+}
+
+enum OpportunityTrustStatus {
+  VERIFIED
+  NEEDS_REVIEW
+  POTENTIAL_RISK
+}
+
+model ExternalOpportunity {
+  id                        String                  @id @default(uuid())
+  title                     String
+  organizationName          String
+  organizationDomain        String
+  type                      OpportunityType
+  location                  String
+  isRemoteEligible          Boolean                 @default(true)
+  salaryOrStipendUSD        String?
+  applicationUrl            String
+  deadline                  DateTime?
+  trustStatus               OpportunityTrustStatus  @default(NEEDS_REVIEW)
+  trustScore                Int                     @default(50)
+  trustRationale            String?
+  rawSource                 String
+  isActive                  Boolean                 @default(true)
+  createdAt                 DateTime                @default(now())
+  updatedAt                 DateTime                @updatedAt
+
+  @@index([trustStatus])
+  @@index([type])
+  @@index([isRemoteEligible])
+}
+
+// -------------------------------------------------------------
+// FINANCIAL PROGRESS & WALLET SYSTEM
+// -------------------------------------------------------------
+
+model Wallet {
+  id                        String                  @id @default(uuid())
+  userId                    String                  @unique
+  user                      User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  currency                  String                  @default("USD")
+  availableBalance          Decimal                 @default(0.00) @db.Decimal(12, 2)
+  pendingEscrowBalance      Decimal                 @default(0.00) @db.Decimal(12, 2)
+  lifetimeEarnings          Decimal                 @default(0.00) @db.Decimal(12, 2)
+  createdAt                 DateTime                @default(now())
+  updatedAt                 DateTime                @updatedAt
+
+  transactions              PaymentTransaction[]
+}
+
+enum TransactionType {
+  ESCROW_DEPOSIT
+  ESCROW_RELEASE
+  PAYOUT_WITHDRAWAL
+  PLATFORM_FEE
+  DISPUTE_REFUND
+}
+
+enum TransactionStatus {
+  INITIATED
+  PROCESSING
+  SUCCESSFUL
+  FAILED
+}
+
+model PaymentTransaction {
+  id                        String                  @id @default(uuid())
+  walletId                  String
+  wallet                    Wallet                  @relation(fields: [walletId], references: [id])
+  milestoneId               String?                 @unique
+  milestone                 ContractMilestone?      @relation(fields: [milestoneId], references: [id])
+  amount                    Decimal                 @db.Decimal(10, 2)
+  currency                  String                  @default("USD")
+  type                      TransactionType
+  status                    TransactionStatus       @default(INITIATED)
+  paymentGateway            String
+  gatewayTransactionRef     String?                 @unique
+  idempotencyKey            String                  @unique
+  metadata                  Json?
+  createdAt                 DateTime                @default(now())
+  updatedAt                 DateTime                @updatedAt
+
+  @@index([walletId])
+  @@index([status])
+}
+
+model FinancialGoal {
+  id                        String                  @id @default(uuid())
+  userId                    String
+  user                      User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title                     String
+  targetAmount              Decimal                 @db.Decimal(10, 2)
+  currentAmount             Decimal                 @default(0.00) @db.Decimal(10, 2)
+  currency                  String                  @default("USD")
+  targetDate                DateTime?
+  isCompleted               Boolean                 @default(false)
+  createdAt                 DateTime                @default(now())
+  updatedAt                 DateTime                @updatedAt
+
+  @@index([userId])
+}
+
+model FinancialLog {
+  id                        String                  @id @default(uuid())
+  userId                    String
+  user                      User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amount                    Decimal                 @db.Decimal(10, 2)
+  currency                  String                  @default("USD")
+  category                  String
+  description               String
+  loggedDate                DateTime                @default(now())
+  createdAt                 DateTime                @default(now())
+
+  @@index([userId, loggedDate])
+}
+
+// -------------------------------------------------------------
+// TRUST, AUDIT & SYSTEM REPUTATION
+// -------------------------------------------------------------
+
+model ReputationLog {
+  id                        String                  @id @default(uuid())
+  userId                    String
+  user                      User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scoreChange               Decimal                 @db.Decimal(5, 2)
+  newScore                  Decimal                 @db.Decimal(5, 2)
+  reasonCode                String
+  referenceEntityId         String?
+  createdAt                 DateTime                @default(now())
+
+  @@index([userId])
+}
+
+model AuditLog {
+  id                        String                  @id @default(uuid())
+  userId                    String?
+  user                      User?                   @relation(fields: [userId], references: [id])
+  action                    String
+  ipAddress                 String?
+  userAgent                 String?
+  metadata                  Json?
+  createdAt                 DateTime                @default(now())
+
+  @@index([action])
+  @@index([createdAt])
+}
