@@ -1,6 +1,8 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useAuth } from "@/lib/auth/context";
 import { useUpora } from "@/lib/store/useUporaStore";
 import { formatCurrency } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -18,26 +20,89 @@ import {
   ExternalLink,
   Lock,
   Compass,
+  AlertCircle,
+  Sparkles,
 } from "lucide-react";
 
 export default function HomePage() {
-  const {
-    profile,
-    nextActions,
-    skills,
-    marketplaceTasks,
-    opportunities,
-    financials,
-    selectedCareerPath,
-  } = useUpora();
+  const { user, isLoading: authLoading } = useAuth();
+  const store = useUpora();
 
-  const savingsPercent = Math.round(
-    (financials.currentGoalSavedUSD / financials.currentGoalTargetUSD) * 100
-  );
+  const [profileData, setProfileData] = useState<any>(null);
+  const [roadmapData, setRoadmapData] = useState<any>(null);
+  const [nextActionData, setNextActionData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchDashboardData() {
+      try {
+        const [nextActionRes, profileRes, roadmapRes] = await Promise.all([
+          fetch("/api/next-action").then((r) => (r.ok ? r.json() : null)),
+          user ? fetch("/api/profile").then((r) => (r.ok ? r.json() : null)) : null,
+          user ? fetch("/api/roadmap").then((r) => (r.ok ? r.json() : null)) : null,
+        ]);
+
+        if (nextActionRes?.nextAction) {
+          setNextActionData(nextActionRes.nextAction);
+        }
+        if (profileRes?.profile) {
+          setProfileData(profileRes.profile);
+        }
+        if (roadmapRes?.roadmap) {
+          setRoadmapData(roadmapRes.roadmap);
+        }
+      } catch (err) {
+        // Fall back gracefully to store defaults
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    if (!authLoading) {
+      fetchDashboardData();
+    }
+  }, [user, authLoading]);
+
+  // Derived user display info
+  const fullName = profileData?.fullName || user?.fullName || "Opportunity Seeker";
+  const firstName = fullName.split(" ")[0];
+  const targetRole =
+    profileData?.targetRole ||
+    roadmapData?.careerPath?.title ||
+    store.profile.targetRole;
+  const reputationScore = profileData?.reputationScore ?? 100.0;
+  const verifiedSkillsCount = profileData?.verifiedSkillsCount ?? 0;
+  const hasCompletedOnboarding = profileData?.onboardingCompleted ?? false;
+  const skillsList = profileData?.skills || store.skills;
+  const nextAction = nextActionData || store.nextActions[0];
 
   return (
     <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-8">
-      {/* 1. Founder-Specified Header: Calm, Actionable Greeting & Core Direction */}
+      {/* 0. ONBOARDING INCOMPLETE BANNER (For newly registered users) */}
+      {user && !hasCompletedOnboarding && !loading && (
+        <div className="rounded-2xl border border-emerald-500/40 bg-gradient-to-r from-emerald-950/60 to-slate-900 p-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 shadow-lg animate-in fade-in">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <Badge variant="growth">Action Required</Badge>
+              <span className="text-xs text-emerald-400 font-mono">Step {profileData?.onboardingStep || 1} of 6</span>
+            </div>
+            <h3 className="text-lg font-bold text-white">
+              Complete Your Diagnostic Career Profile
+            </h3>
+            <p className="text-xs sm:text-sm text-slate-300 max-w-2xl">
+              Establish your starting skills, time commitment, and goals to generate your personalized 5-phase career roadmap and qualify for paid work.
+            </p>
+          </div>
+          <Link href="/onboarding" className="shrink-0">
+            <Button variant="primary" size="md">
+              Complete Onboarding
+              <ArrowRight className="w-4 h-4 ml-1.5" />
+            </Button>
+          </Link>
+        </div>
+      )}
+
+      {/* 1. Calm, Actionable Header Greeting & Direction */}
       <section className="rounded-2xl border border-border-subtle bg-gradient-to-b from-surface to-surface-subtle/40 p-6 sm:p-8">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
           <div className="space-y-2">
@@ -46,24 +111,30 @@ export default function HomePage() {
                 Current Career Trajectory
               </span>
               <span className="text-text-secondary">·</span>
-              <span className="text-xs text-text-secondary">{profile.timezone}</span>
+              <span className="text-xs text-text-secondary">
+                {profileData?.timezone || store.profile.timezone}
+              </span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-text-primary">
-              Good morning, {profile.fullName.split(" ")[0]}
+              Good day, {firstName}
             </h1>
             <p className="text-sm sm:text-base text-text-secondary max-w-2xl">
-              Target Role: <strong className="text-text-primary font-medium">{profile.targetRole}</strong>.
-              Your next verified milestone unlocks access to intermediate infrastructure maintenance contracts.
+              Target Role: <strong className="text-text-primary font-medium">{targetRole}</strong>.
+              {hasCompletedOnboarding
+                ? " Your active roadmap milestones guide you from fundamentals to verified proof of work."
+                : " Complete onboarding to establish your verified learning path."}
             </p>
           </div>
 
-          {/* Quick Metrics Strip */}
+          {/* Real Metrics Strip */}
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             <div className="rounded-xl border border-border-subtle bg-surface-subtle p-3.5">
               <div className="text-[11px] font-medium text-text-secondary uppercase">Reputation</div>
               <div className="flex items-center gap-1.5 mt-1">
                 <ShieldCheck className="h-4 w-4 text-brand-growth" />
-                <span className="text-lg font-bold text-text-primary">{profile.reputationScore.toFixed(1)}%</span>
+                <span className="text-lg font-bold text-text-primary">
+                  {reputationScore.toFixed(1)}%
+                </span>
               </div>
             </div>
 
@@ -71,14 +142,17 @@ export default function HomePage() {
               <div className="text-[11px] font-medium text-text-secondary uppercase">Verified Skills</div>
               <div className="flex items-center gap-1.5 mt-1">
                 <Award className="h-4 w-4 text-blue-400" />
-                <span className="text-lg font-bold text-text-primary">{skills.length}</span>
+                <span className="text-lg font-bold text-text-primary">
+                  {verifiedSkillsCount}
+                </span>
               </div>
             </div>
 
             <div className="rounded-xl border border-border-subtle bg-surface-subtle p-3.5 col-span-2 sm:col-span-1">
               <div className="text-[11px] font-medium text-text-secondary uppercase">Balance</div>
               <div className="flex items-center gap-1.5 mt-1 font-mono font-bold text-lg text-brand-growth">
-                {formatCurrency(financials.availableBalanceUSD)}
+                {/* Genuine wallet balance: $0.00 for newly registered accounts */}
+                {user ? formatCurrency(0.0) : formatCurrency(store.financials.availableBalanceUSD)}
               </div>
             </div>
           </div>
@@ -93,62 +167,203 @@ export default function HomePage() {
               What should I do next?
             </h2>
             <p className="text-xs sm:text-sm text-text-secondary">
-              Prioritized daily actions derived from your skill gap, active submissions, and matched marketplace demand.
+              Prioritized daily action derived from your skill gap, active submissions, and matched marketplace demand.
             </p>
           </div>
-          <Badge variant="growth" className="hidden sm:inline-flex">
-            {nextActions.length} Actions Ready
-          </Badge>
+          {nextAction?.badgeText && (
+            <Badge variant="growth">
+              {nextAction.badgeText}
+            </Badge>
+          )}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {nextActions.map((action, idx) => (
-            <Card
-              key={action.id}
-              className="relative overflow-hidden border-border-subtle hover:border-brand-growth/40 transition-all flex flex-col justify-between"
-            >
-              <CardContent className="p-5 sm:p-6 space-y-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-2.5">
-                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-surface-subtle text-xs font-bold text-brand-growth border border-border-subtle font-mono">
-                      0{idx + 1}
+        {/* Primary Highlighted Next Best Action */}
+        {nextAction && (
+          <Card className="border-brand-growth/50 bg-surface/90 shadow-md">
+            <CardContent className="p-6">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+                <div className="space-y-3 max-w-2xl">
+                  <div className="flex items-center gap-2">
+                    <Badge variant="focus">Priority Focus</Badge>
+                    <span className="text-xs font-mono text-text-secondary">
+                      {nextAction.actionType || "DIAGNOSTIC"}
                     </span>
-                    <Badge
-                      variant={
-                        action.category === "PRACTICE" || action.category === "LEARN"
-                          ? "growth"
-                          : action.category === "WORK"
-                          ? "focus"
-                          : "neutral"
-                      }
-                    >
-                      {action.category}
-                    </Badge>
                   </div>
-                  <div className="flex items-center gap-1 text-xs text-text-secondary">
-                    <Clock className="h-3.5 w-3.5" />
-                    <span>{action.estimatedMinutes}m</span>
-                  </div>
-                </div>
-
-                <div>
-                  <h3 className="text-base font-semibold text-text-primary leading-snug">
-                    {action.title}
+                  <h3 className="text-xl font-bold text-text-primary">
+                    {nextAction.title}
                   </h3>
-                  <p className="mt-1.5 text-xs sm:text-sm text-text-secondary leading-relaxed">
-                    {action.description}
+                  <p className="text-sm text-text-secondary leading-relaxed">
+                    {nextAction.description}
                   </p>
                 </div>
 
-                <div className="pt-2 border-t border-border-subtle/60 flex items-center justify-between">
-                  <span className="text-xs font-medium text-brand-growth">
-                    {action.rewardOrImpact}
-                  </span>
-                  <Link href={action.actionHref}>
-                    <Button size="sm" variant={idx === 0 ? "primary" : "secondary"}>
-                      <span>{action.actionLabel}</span>
-                      <ArrowRight className="h-3.5 w-3.5 ml-1" />
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 shrink-0">
+                  <Link href={nextAction.ctaUrl || "/onboarding"}>
+                    <Button variant="primary" size="lg" className="w-full">
+                      {nextAction.ctaLabel || "Proceed"}
+                      <ArrowRight className="h-4 w-4 ml-1.5" />
                     </Button>
+                  </Link>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </section>
+
+      {/* 3. ACTIVE ROADMAP MILESTONES (If user has generated roadmap) */}
+      {roadmapData?.milestones && (
+        <section className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-bold text-text-primary tracking-tight">
+                Active Career Roadmap: {roadmapData.careerPath?.title}
+              </h2>
+              <p className="text-xs sm:text-sm text-text-secondary">
+                Sequential progression milestones towards verified production readiness.
+              </p>
+            </div>
+            <Link href="/discover" className="text-xs text-brand-growth hover:underline flex items-center gap-1">
+              Explore All Paths <ArrowRight className="w-3 h-3" />
+            </Link>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+            {roadmapData.milestones.map((milestone: any, index: number) => {
+              const isDone = milestone.isCompleted;
+              const isCurrent = !isDone && (index === 0 || roadmapData.milestones[index - 1]?.isCompleted);
+
+              return (
+                <div
+                  key={milestone.id || index}
+                  className={`p-4 rounded-xl border flex flex-col justify-between space-y-3 transition-all ${
+                    isDone
+                      ? "bg-emerald-950/20 border-emerald-800/60"
+                      : isCurrent
+                      ? "bg-slate-900 border-brand-growth ring-1 ring-brand-growth/50 shadow-md"
+                      : "bg-slate-950/50 border-slate-800/80 opacity-70"
+                  }`}
+                >
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-mono font-bold text-slate-400">
+                        PHASE {milestone.stepOrder}
+                      </span>
+                      {isDone ? (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                      ) : isCurrent ? (
+                        <Badge variant="growth" className="text-[9px] px-1.5 py-0">Current</Badge>
+                      ) : (
+                        <Lock className="w-3.5 h-3.5 text-slate-500" />
+                      )}
+                    </div>
+                    <div className="text-xs font-bold text-white leading-tight">
+                      {milestone.title}
+                    </div>
+                  </div>
+
+                  <div className="pt-2 border-t border-slate-800/60 flex items-center justify-between text-[11px] text-slate-400">
+                    <span className="font-mono">{milestone.actionType}</span>
+                    {isCurrent && (
+                      <Link href={milestone.actionType === "PRACTICE_PROJECT" ? "/challenges" : "/learning"}>
+                        <span className="text-emerald-400 font-semibold hover:underline">Start &rarr;</span>
+                      </Link>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* 4. VERIFIED SKILLS & PROOF OF WORK */}
+      <section className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-bold text-text-primary tracking-tight">
+              Skill Portfolio & Verification Tiers
+            </h2>
+            <p className="text-xs sm:text-sm text-text-secondary">
+              Distinguishing self-reported claims from objectively tested and client-validated deliverables.
+            </p>
+          </div>
+          <Link href="/learning" className="text-xs text-brand-growth hover:underline flex items-center gap-1">
+            Practical Sandbox <ArrowRight className="w-3 h-3" />
+          </Link>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {skillsList.slice(0, 6).map((skill: any) => {
+            const isSelfReported = skill.tier === "SELF_REPORTED";
+            return (
+              <div
+                key={skill.id || skill.slug}
+                className="rounded-xl border border-border-subtle bg-surface p-4 flex flex-col justify-between space-y-3"
+              >
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <Badge variant={isSelfReported ? "warning" : "growth"} className="text-[10px]">
+                      {isSelfReported ? "SELF-REPORTED" : "PROJECT-VERIFIED"}
+                    </Badge>
+                    <span className="text-[11px] font-mono text-text-secondary">
+                      {isSelfReported ? "Pending Proof" : "Evaluated"}
+                    </span>
+                  </div>
+                  <h4 className="text-sm font-bold text-text-primary pt-1">
+                    {skill.name}
+                  </h4>
+                  <p className="text-xs text-text-secondary line-clamp-2">
+                    {skill.category || "Core Competency"}
+                  </p>
+                </div>
+
+                <div className="pt-2 border-t border-border-subtle/60 flex items-center justify-between text-xs">
+                  <span className="text-text-secondary">Status:</span>
+                  <span className={`font-semibold ${isSelfReported ? "text-amber-400" : "text-emerald-400"}`}>
+                    {isSelfReported ? "Take Assessment" : "Verified 100%"}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* 5. LIVE MARKETPLACE DEMAND & OPPORTUNITIES */}
+      <section className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-bold text-text-primary tracking-tight">
+              Matched Paid Tasks & Opportunities
+            </h2>
+            <p className="text-xs sm:text-sm text-text-secondary">
+              Verified client deliverables with funds locked in secure escrow contracts.
+            </p>
+          </div>
+          <Link href="/tasks" className="text-xs text-brand-growth hover:underline flex items-center gap-1">
+            Browse All Work <ArrowRight className="w-3 h-3" />
+          </Link>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {store.marketplaceTasks.map((task) => (
+            <Card key={task.id} className="border-border-subtle bg-surface hover:border-brand-growth/40 transition-all">
+              <CardContent className="p-5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <Badge variant="growth">Escrow Protected</Badge>
+                  <span className="font-mono font-bold text-brand-growth text-base">
+                    {formatCurrency(task.budgetUSD)}
+                  </span>
+                </div>
+                <div>
+                  <h4 className="font-bold text-text-primary text-sm">{task.title}</h4>
+                  <p className="text-xs text-text-secondary mt-1 line-clamp-2">{task.description}</p>
+                </div>
+                <div className="flex items-center justify-between pt-2 border-t border-border-subtle/60 text-xs text-text-secondary">
+                  <span>Client: {task.clientName}</span>
+                  <Link href="/tasks" className="text-brand-growth hover:underline font-semibold">
+                    Apply With Skills &rarr;
                   </Link>
                 </div>
               </CardContent>
@@ -156,208 +371,6 @@ export default function HomePage() {
           ))}
         </div>
       </section>
-
-      {/* 3. Core Ecosystem Grid: Learn, Work, Earn, Prove */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left 2 Cols: Learning & Marketplace Overviews */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Practical Learning & Skills Progress */}
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-3">
-              <div>
-                <CardTitle className="text-base font-bold">Practical Skills & Evidence</CardTitle>
-                <CardDescription className="text-xs">
-                  Skills proven through objective challenge rubrics and client-validated work.
-                </CardDescription>
-              </div>
-              <Link href="/passport">
-                <Button size="sm" variant="ghost">
-                  <span>View Passport</span>
-                  <ArrowRight className="h-3.5 w-3.5 ml-1" />
-                </Button>
-              </Link>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {skills.slice(0, 4).map((skill) => (
-                <div
-                  key={skill.id}
-                  className="flex items-center justify-between p-3 rounded-lg border border-border-subtle bg-surface-subtle/50"
-                >
-                  <div className="space-y-0.5">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-semibold text-text-primary">{skill.name}</span>
-                      <Badge
-                        variant={skill.tier === "PROJECT_VERIFIED" ? "growth" : "focus"}
-                        className="text-[10px]"
-                      >
-                        {skill.tier.replace("_", " ")}
-                      </Badge>
-                    </div>
-                    <div className="text-xs text-text-secondary flex items-center gap-2">
-                      <span>{skill.category}</span>
-                      <span>·</span>
-                      <span className="font-mono text-emerald-400 font-medium">Score: {skill.score}/100</span>
-                    </div>
-                  </div>
-                  <CheckCircle2 className="h-4 w-4 text-brand-growth shrink-0" />
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-
-          {/* Available Paid Tasks Matching Demonstrated Skills */}
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-3">
-              <div>
-                <CardTitle className="text-base font-bold">Matched Marketplace Work</CardTitle>
-                <CardDescription className="text-xs">
-                  Legitimate client tasks funded in escrow, gated strictly by demonstrated abilities.
-                </CardDescription>
-              </div>
-              <Link href="/work">
-                <Button size="sm" variant="ghost">
-                  <span>Explore Tasks</span>
-                  <ArrowRight className="h-3.5 w-3.5 ml-1" />
-                </Button>
-              </Link>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {marketplaceTasks.map((task) => (
-                <div
-                  key={task.id}
-                  className="p-4 rounded-xl border border-border-subtle bg-surface-subtle/50 hover:border-border-subtle transition-all flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
-                >
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-semibold text-text-primary">{task.title}</span>
-                      <Badge variant="focus" className="text-[10px]">
-                        {task.tierLabel}
-                      </Badge>
-                    </div>
-                    <p className="text-xs text-text-secondary">
-                      Client: <span className="text-text-primary">{task.clientName}</span> ({task.clientRating} ★ · {task.clientCompletedJobs} jobs)
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-3 self-end sm:self-center">
-                    <div className="text-right">
-                      <div className="font-mono font-bold text-brand-growth">
-                        {formatCurrency(task.budgetUSD)}
-                      </div>
-                      <div className="text-[10px] text-text-secondary">Escrow Funded</div>
-                    </div>
-                    <Link href="/work">
-                      <Button size="sm" variant="secondary">
-                        View
-                      </Button>
-                    </Link>
-                  </div>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Right Col: Financial Health & Verified Opportunities */}
-        <div className="space-y-6">
-          {/* Financial Progress Widget (Founder Mandated Example) */}
-          <Card>
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-base font-bold">Financial Progress</CardTitle>
-                <TrendingUp className="h-4 w-4 text-brand-growth" />
-              </div>
-              <CardDescription className="text-xs">
-                Non-custodial telemetry connecting verified work with personal economic milestones.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="p-3 rounded-lg border border-border-subtle bg-surface-subtle">
-                  <div className="text-[11px] text-text-secondary font-medium uppercase">Income This Month</div>
-                  <div className="mt-1 font-mono text-xl font-bold text-text-primary">
-                    {formatCurrency(financials.incomeThisMonth)}
-                  </div>
-                </div>
-                <div className="p-3 rounded-lg border border-border-subtle bg-surface-subtle">
-                  <div className="text-[11px] text-text-secondary font-medium uppercase">Saved This Month</div>
-                  <div className="mt-1 font-mono text-xl font-bold text-brand-growth">
-                    {formatCurrency(financials.savedThisMonth)}
-                  </div>
-                </div>
-              </div>
-
-              {/* Goal Progress Bar */}
-              <div className="space-y-2 p-3.5 rounded-xl border border-border-subtle bg-surface-subtle/40">
-                <div className="flex justify-between text-xs">
-                  <span className="font-medium text-text-primary">{financials.currentGoalTitle}</span>
-                  <span className="font-mono text-brand-growth font-bold">{savingsPercent}%</span>
-                </div>
-                <Progress value={savingsPercent} />
-                <div className="flex justify-between text-[11px] text-text-secondary font-mono">
-                  <span>{formatCurrency(financials.currentGoalSavedUSD)}</span>
-                  <span>Target: {formatCurrency(financials.currentGoalTargetUSD)}</span>
-                </div>
-              </div>
-
-              <Link href="/finance" className="block w-full">
-                <Button variant="outline" size="sm" className="w-full">
-                  Manage Financial Goals
-                </Button>
-              </Link>
-            </CardContent>
-          </Card>
-
-          {/* Verified External Opportunities */}
-          <Card>
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-base font-bold">Verified Opportunities</CardTitle>
-                <ShieldCheck className="h-4 w-4 text-blue-400" />
-              </div>
-              <CardDescription className="text-xs">
-                Checked against official domains, authentic origins, and transparent terms.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {opportunities.slice(0, 3).map((opp) => (
-                <div
-                  key={opp.id}
-                  className="p-3 rounded-lg border border-border-subtle bg-surface-subtle/50 space-y-1.5"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <h4 className="text-xs font-semibold text-text-primary leading-tight">
-                      {opp.title}
-                    </h4>
-                    <Badge
-                      variant={
-                        opp.trustStatus === "VERIFIED"
-                          ? "growth"
-                          : opp.trustStatus === "NEEDS_REVIEW"
-                          ? "warning"
-                          : "risk"
-                      }
-                      className="text-[9px] shrink-0"
-                    >
-                      {opp.trustStatus}
-                    </Badge>
-                  </div>
-                  <div className="flex items-center justify-between text-[11px] text-text-secondary">
-                    <span>{opp.organization}</span>
-                    <span className="font-medium text-text-primary">{opp.compensation}</span>
-                  </div>
-                </div>
-              ))}
-
-              <Link href="/opportunities" className="block w-full pt-1">
-                <Button variant="outline" size="sm" className="w-full">
-                  <span>Browse Opportunity Index</span>
-                  <ExternalLink className="h-3.5 w-3.5 ml-1.5" />
-                </Button>
-              </Link>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
     </div>
   );
 }

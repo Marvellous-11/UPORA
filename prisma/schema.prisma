@@ -79,6 +79,15 @@ model Profile {
   verifiedSkillsCount       Int            @default(0)
   completedProjectsCount    Int            @default(0)
   onboardingCompleted       Boolean        @default(false)
+  primaryGoal               String?
+  goals                     String[]       @default([])
+  experienceLevel           String?
+  educationLevel            String?
+  interests                 String[]       @default([])
+  workPreference            String?
+  learningPace              String?
+  targetRole                String?
+  onboardingStep            Int            @default(1)
   createdAt                 DateTime       @default(now())
   updatedAt                 DateTime       @updatedAt
 
@@ -193,6 +202,7 @@ model RoadmapMilestone {
   description               String
   actionType                String         // "LEARN", "PRACTICE_PROJECT", "ASSESSMENT", "APPLY_TASK"
   targetEntityId            String?
+  status                    String         @default("AVAILABLE") // "AVAILABLE", "IN_PROGRESS", "COMPLETED", "LOCKED"
   isCompleted               Boolean        @default(false)
   completedAt               DateTime?
 
