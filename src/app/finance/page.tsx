@@ -1,44 +1,73 @@
 "use client";
 
-import { useState } from "react";
-import { useUpora } from "@/lib/store/useUporaStore";
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useAuth } from "@/lib/auth/context";
 import { formatCurrency } from "@/lib/utils";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Progress } from "@/components/ui/progress";
-import {
-  TrendingUp,
-  DollarSign,
-  ShieldCheck,
-  CreditCard,
-  PlusCircle,
-  Clock,
-  ArrowUpRight,
-  ArrowDownLeft,
-  AlertCircle,
-  Lock,
-} from "lucide-react";
+import { TrendingUp, AlertCircle, ArrowRight, Clock, CheckCircle2, Info } from "lucide-react";
 
-export default function FinancialProgressPage() {
-  const { financials, logFinancialSaving } = useUpora();
-  const [saveAmount, setSaveAmount] = useState("25");
+interface WalletData {
+  id?: string;
+  availableBalance: number;
+  pendingEscrowBalance: number;
+  lifetimeEarnings: number;
+  currency: string;
+}
 
-  const savingsPercent = Math.min(
-    100,
-    Math.round(
-      (financials.currentGoalSavedUSD / financials.currentGoalTargetUSD) * 100
-    )
-  );
+interface Transaction {
+  id: string;
+  amount: number;
+  currency: string;
+  type: string;
+  status: string;
+  paymentGateway: string;
+  createdAt: string;
+}
 
-  const handleAddSaving = () => {
-    const num = parseFloat(saveAmount);
-    if (!isNaN(num) && num > 0) {
-      logFinancialSaving(num);
-      setSaveAmount("25");
+export default function FinancePage() {
+  const { user } = useAuth();
+  const [wallet, setWallet] = useState<WalletData | null>(null);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!user) {
+      setLoading(false);
+      return;
     }
-  };
+    fetch("/api/wallet")
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error("Failed to load wallet"))))
+      .then((data) => {
+        setWallet(data.wallet);
+        setTransactions(data.transactions || []);
+      })
+      .catch(() => setError("Unable to load wallet data right now."))
+      .finally(() => setLoading(false));
+  }, [user]);
+
+  if (!user) {
+    return (
+      <div className="mx-auto max-w-7xl px-4 py-12 space-y-4">
+        <h1 className="text-2xl font-bold text-text-primary">Sign in to view your finances</h1>
+        <Link href="/login">
+          <Button variant="primary">Sign In</Button>
+        </Link>
+      </div>
+    );
+  }
+
+  if (loading) {
+    return <div className="mx-auto max-w-7xl px-4 py-10 text-sm text-text-secondary">Loading wallet…</div>;
+  }
+
+  const currency = wallet?.currency || "USD";
+  const available = wallet?.availableBalance ?? 0;
+  const escrow = wallet?.pendingEscrowBalance ?? 0;
+  const lifetime = wallet?.lifetimeEarnings ?? 0;
 
   return (
     <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-8">
@@ -46,213 +75,140 @@ export default function FinancialProgressPage() {
       <div className="space-y-2">
         <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-brand-growth">
           <TrendingUp className="h-4 w-4" />
-          <span>Financial Progress & Telemetry</span>
+          <span>Financial Progress Telemetry</span>
         </div>
         <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-text-primary">
-          Turn Practical Work into Economic Mobility
+          Wallet & Earnings
         </h1>
         <p className="text-sm sm:text-base text-text-secondary max-w-3xl">
-          UPORA tracks your verified marketplace earnings and personal savings progress. We do not act as a custodial bank; all escrow and withdrawals are settled via licensed global processors.
+          Verified earnings from completed contract milestones. Balances reflect internal ledger settlements.
         </p>
       </div>
 
-      {/* Core Financial Metrics (Founder's Mandated Format) */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="rounded-xl border border-border-subtle bg-surface p-5 space-y-2">
-          <div className="text-xs font-medium text-text-secondary uppercase tracking-wider">
-            Income This Month
-          </div>
-          <div className="font-mono text-2xl sm:text-3xl font-bold text-text-primary">
-            {formatCurrency(financials.incomeThisMonth)}
-          </div>
-          <div className="text-[11px] text-brand-growth font-medium flex items-center gap-1">
-            <ArrowUpRight className="h-3 w-3" />
-            <span>+100% from last month</span>
-          </div>
-        </div>
-
-        <div className="rounded-xl border border-border-subtle bg-surface p-5 space-y-2">
-          <div className="text-xs font-medium text-text-secondary uppercase tracking-wider">
-            Saved This Month
-          </div>
-          <div className="font-mono text-2xl sm:text-3xl font-bold text-brand-growth">
-            {formatCurrency(financials.savedThisMonth)}
-          </div>
-          <div className="text-[11px] text-text-secondary">
-            Allocated to targets
-          </div>
-        </div>
-
-        <div className="rounded-xl border border-border-subtle bg-surface p-5 space-y-2">
-          <div className="text-xs font-medium text-text-secondary uppercase tracking-wider">
-            Available Wallet Balance
-          </div>
-          <div className="font-mono text-2xl sm:text-3xl font-bold text-text-primary">
-            {formatCurrency(financials.availableBalanceUSD)}
-          </div>
-          <div className="text-[11px] text-text-secondary">
-            Ready for local payout
-          </div>
-        </div>
-
-        <div className="rounded-xl border border-border-subtle bg-surface p-5 space-y-2">
-          <div className="text-xs font-medium text-text-secondary uppercase tracking-wider">
-            Lifetime UPORA Earnings
-          </div>
-          <div className="font-mono text-2xl sm:text-3xl font-bold text-text-primary">
-            {formatCurrency(financials.lifetimeEarningsUSD)}
-          </div>
-          <div className="text-[11px] text-blue-400 font-medium">
-            4 verified milestones
-          </div>
+      {/* Simulation Disclosure */}
+      <div className="rounded-xl border border-amber-800/50 bg-amber-950/20 p-4 flex items-start gap-3">
+        <Info className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
+        <div className="text-xs text-amber-200/90 space-y-1">
+          <p className="font-semibold">Internal Ledger — MVP Simulation</p>
+          <p>
+            Payments are currently settled through UPORA&apos;s internal ledger only. No real money has been transferred.
+            Live payment gateway integration (Stripe Connect, Paystack, Wise) is planned for a future release.
+            Do not treat these balances as real funds until a live gateway is connected.
+          </p>
         </div>
       </div>
 
-      {/* Main Content Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left 2 Cols: Goal Progress & Transaction Ledger */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Active Goal Progress */}
-          <Card>
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="text-base font-bold">
-                    Target Milestone: {financials.currentGoalTitle}
-                  </CardTitle>
-                  <CardDescription className="text-xs">
-                    Goal Target: {formatCurrency(financials.currentGoalTargetUSD)} · Current Saved: {formatCurrency(financials.currentGoalSavedUSD)}
-                  </CardDescription>
-                </div>
-                <div className="text-right">
-                  <span className="font-mono text-2xl font-bold text-brand-growth">
-                    {savingsPercent}%
-                  </span>
-                  <div className="text-[10px] text-text-secondary uppercase font-semibold">Progress</div>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <Progress value={savingsPercent} className="h-3" />
+      {error && (
+        <div className="p-3 rounded-lg border border-rose-800/60 bg-rose-950/30 text-rose-300 text-xs flex items-start gap-2">
+          <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+          <span>{error}</span>
+        </div>
+      )}
 
-              {/* Quick Save Simulator */}
-              <div className="rounded-xl border border-border-subtle bg-surface-subtle p-4 space-y-3">
-                <div className="text-xs font-semibold uppercase tracking-wider text-text-primary">
-                  Allocate Income to this Goal:
-                </div>
-                <div className="flex items-center gap-3">
-                  <Input
-                    type="number"
-                    value={saveAmount}
-                    onChange={(e) => setSaveAmount(e.target.value)}
-                    className="w-32 font-mono text-sm"
-                    placeholder="25"
-                  />
-                  <Button size="sm" variant="primary" onClick={handleAddSaving}>
-                    <PlusCircle className="h-4 w-4 mr-1.5" />
-                    <span>Log Saving Contribution</span>
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+      {/* Balance Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <Card>
+          <CardContent className="p-5 space-y-1">
+            <div className="text-[11px] font-medium text-text-secondary uppercase tracking-wider">Available Balance</div>
+            <div className="text-2xl font-black font-mono text-brand-growth">
+              {formatCurrency(available, currency)}
+            </div>
+            <div className="text-[11px] text-text-secondary">Internal ledger — not yet withdrawable</div>
+          </CardContent>
+        </Card>
 
-          {/* Double-Entry Transaction Ledger */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base font-bold">Transaction & Escrow History</CardTitle>
-              <CardDescription className="text-xs">
-                Audited record of released client milestones and withdrawals.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {financials.recentTransactions.map((tx) => (
-                <div
-                  key={tx.id}
-                  className="flex items-center justify-between p-3.5 rounded-xl border border-border-subtle bg-surface-subtle/50"
-                >
-                  <div className="flex items-center gap-3">
-                    <div
-                      className={`flex h-9 w-9 items-center justify-center rounded-lg border ${
-                        tx.type === "CREDIT"
-                          ? "border-emerald-800/60 bg-emerald-950/30 text-brand-growth"
-                          : "border-border-subtle bg-surface-subtle text-text-secondary"
-                      }`}
-                    >
-                      {tx.type === "CREDIT" ? (
-                        <ArrowDownLeft className="h-4 w-4" />
-                      ) : (
-                        <ArrowUpRight className="h-4 w-4" />
-                      )}
-                    </div>
-                    <div>
-                      <div className="text-xs sm:text-sm font-semibold text-text-primary">
-                        {tx.title}
-                      </div>
-                      <div className="text-[11px] text-text-secondary mt-0.5">
-                        {tx.date} · Status: <span className="text-text-primary">{tx.status}</span>
-                      </div>
-                    </div>
-                  </div>
+        <Card>
+          <CardContent className="p-5 space-y-1">
+            <div className="text-[11px] font-medium text-text-secondary uppercase tracking-wider">Pending Escrow</div>
+            <div className="text-2xl font-black font-mono text-amber-400">
+              {formatCurrency(escrow, currency)}
+            </div>
+            <div className="text-[11px] text-text-secondary">Held until milestone approval</div>
+          </CardContent>
+        </Card>
 
-                  <div className="text-right">
-                    <div className="font-mono font-bold text-sm text-brand-growth">
-                      +{formatCurrency(tx.amount)}
-                    </div>
-                    <div className="text-[10px] text-text-secondary font-mono">
-                      USD
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
+        <Card>
+          <CardContent className="p-5 space-y-1">
+            <div className="text-[11px] font-medium text-text-secondary uppercase tracking-wider">Lifetime Earnings</div>
+            <div className="text-2xl font-black font-mono text-text-primary">
+              {formatCurrency(lifetime, currency)}
+            </div>
+            <div className="text-[11px] text-text-secondary">Total released from completed milestones</div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Transaction History */}
+      <div className="space-y-4">
+        <div>
+          <h2 className="text-lg font-bold text-text-primary">Transaction History</h2>
+          <p className="text-xs text-text-secondary mt-1">
+            All ledger entries from contract milestone settlements.
+          </p>
         </div>
 
-        {/* Right Col: Compliant Payment Infrastructure & Payout Settings */}
-        <div className="space-y-6">
-          <Card>
-            <CardHeader className="pb-3">
-              <div className="flex items-center gap-2">
-                <CreditCard className="h-4 w-4 text-blue-400" />
-                <CardTitle className="text-base font-bold">Payout Method</CardTitle>
-              </div>
-              <CardDescription className="text-xs">
-                Non-custodial global transfer adapters.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4 text-xs">
-              <div className="p-3.5 rounded-xl border border-border-subtle bg-surface-subtle space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-text-primary">Global Bank Transfer (Wise/ACH)</span>
-                  <Badge variant="growth" className="text-[9px]">ACTIVE</Badge>
+        {transactions.length === 0 ? (
+          <div className="rounded-xl border border-border-subtle bg-surface-subtle p-6 text-sm text-text-secondary space-y-2">
+            <p>No transactions yet.</p>
+            <p>
+              Complete contract milestones on the{" "}
+              <Link href="/work" className="text-brand-growth hover:underline">
+                Work Marketplace
+              </Link>{" "}
+              to see earnings here.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {transactions.map((tx) => (
+              <div
+                key={tx.id}
+                className="rounded-xl border border-border-subtle bg-surface p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+              >
+                <div className="space-y-0.5">
+                  <div className="text-sm font-semibold text-text-primary capitalize">
+                    {tx.type.toLowerCase().replace(/_/g, " ")}
+                  </div>
+                  <div className="text-[11px] text-text-secondary">
+                    {new Date(tx.createdAt).toLocaleDateString()} · Gateway: {tx.paymentGateway}
+                  </div>
                 </div>
-                <p className="text-text-secondary text-[11px]">
-                  Direct deposit via Stripe Connect & Wise Multi-Currency. Payouts clear in 1–2 business days with 0% UPORA platform withdrawal fees.
-                </p>
-              </div>
-
-              <div className="p-3.5 rounded-xl border border-border-subtle bg-surface-subtle space-y-1.5 opacity-75">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-text-primary">African Regional Clearing (Paystack)</span>
-                  <Badge variant="neutral" className="text-[9px]">AVAILABLE</Badge>
-                </div>
-                <p className="text-text-secondary text-[11px]">
-                  Local bank clearing in NGN, KES, GHS, ZAR.
-                </p>
-              </div>
-
-              <div className="pt-2 border-t border-border-subtle text-[11px] text-text-secondary leading-relaxed">
-                <div className="flex items-start gap-1.5 text-text-secondary">
-                  <Lock className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-                  <span>
-                    UPORA does not store full card numbers or sensitive banking credentials. All transfers are protected by bank-grade TLS 1.3 encryption.
+                <div className="flex items-center gap-3 shrink-0">
+                  <span className="font-mono font-bold text-brand-growth text-sm">
+                    {formatCurrency(tx.amount, tx.currency)}
                   </span>
+                  <Badge
+                    variant={tx.status === "SUCCESSFUL" ? "growth" : tx.status === "FAILED" ? "risk" : "warning"}
+                    className="text-[10px]"
+                  >
+                    {tx.status === "SUCCESSFUL" ? (
+                      <><CheckCircle2 className="h-3 w-3 mr-1" />{tx.status}</>
+                    ) : tx.status === "PROCESSING" ? (
+                      <><Clock className="h-3 w-3 mr-1" />{tx.status}</>
+                    ) : (
+                      tx.status
+                    )}
+                  </Badge>
                 </div>
               </div>
-            </CardContent>
-          </Card>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* CTA */}
+      <div className="rounded-xl border border-border-subtle bg-surface-subtle p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <div className="text-sm font-bold text-text-primary">Ready to earn?</div>
+          <div className="text-xs text-text-secondary mt-0.5">
+            Apply to verified tasks on the marketplace to start building your balance.
+          </div>
         </div>
+        <Link href="/work">
+          <Button variant="primary">
+            Browse Open Tasks <ArrowRight className="h-4 w-4 ml-1.5" />
+          </Button>
+        </Link>
       </div>
     </div>
   );

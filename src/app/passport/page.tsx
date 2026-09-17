@@ -1,265 +1,267 @@
 "use client";
 
-import { useState } from "react";
-import { useUpora } from "@/lib/store/useUporaStore";
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useAuth } from "@/lib/auth/context";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-  Award,
   ShieldCheck,
+  Award,
   CheckCircle2,
-  ExternalLink,
-  Share2,
-  Lock,
-  Globe,
-  Star,
+  AlertCircle,
+  ArrowRight,
   Copy,
   Check,
-  Hash,
+  Star,
+  Briefcase,
 } from "lucide-react";
 
-export default function SkillPassportPage() {
-  const { profile, skills } = useUpora();
-  const [copiedLink, setCopiedLink] = useState(false);
+export default function PassportPage() {
+  const { user } = useAuth();
+  const [profile, setProfile] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
-  const handleCopyPassportLink = () => {
-    navigator.clipboard.writeText(`https://upora.org/passport/${profile.passportId}`);
-    setCopiedLink(true);
-    setTimeout(() => setCopiedLink(false), 2000);
+  useEffect(() => {
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+    fetch("/api/profile")
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error("Failed to load profile"))))
+      .then((data) => setProfile(data.profile))
+      .catch(() => setError("Unable to load your Skill Passport right now."))
+      .finally(() => setLoading(false));
+  }, [user]);
+
+  const copyShareLink = () => {
+    if (!user) return;
+    const url = `${window.location.origin}/passport/${user.userId || ""}`;
+    navigator.clipboard.writeText(url);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
+
+  if (!user) {
+    return (
+      <div className="mx-auto max-w-7xl px-4 py-12 space-y-4">
+        <h1 className="text-2xl font-bold text-text-primary">Sign in to view your Skill Passport</h1>
+        <Link href="/login">
+          <Button variant="primary">Sign In</Button>
+        </Link>
+      </div>
+    );
+  }
+
+  if (loading) {
+    return <div className="mx-auto max-w-7xl px-4 py-10 text-sm text-text-secondary">Loading Skill Passport…</div>;
+  }
+
+  if (error || !profile) {
+    return (
+      <div className="mx-auto max-w-7xl px-4 py-10 space-y-4">
+        <div className="p-3 rounded-lg border border-rose-800/60 bg-rose-950/30 text-rose-300 text-xs flex items-start gap-2">
+          <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+          <span>{error || "Profile not found."}</span>
+        </div>
+      </div>
+    );
+  }
+
+  const verifiedSkills = (profile.skills || []).filter((s: any) => s.tier !== "SELF_REPORTED");
+  const selfReportedSkills = (profile.skills || []).filter((s: any) => s.tier === "SELF_REPORTED");
+  const portfolioItems = profile.portfolioItems || [];
 
   return (
     <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-8">
-      {/* Header Banner */}
-      <div className="rounded-2xl border border-border-subtle bg-surface p-6 sm:p-8 space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6">
-          <div className="flex items-center gap-4">
-            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-brand-growth/15 text-brand-growth font-black text-2xl border border-brand-growth/30 shadow-inner">
-              ME
-            </div>
-            <div className="space-y-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <h1 className="text-xl sm:text-2xl font-bold text-text-primary">
-                  {profile.fullName}
-                </h1>
-                <Badge variant="growth" className="text-[11px]">
-                  Verified Talent
-                </Badge>
-                <Badge variant="neutral" className="text-[10px] font-mono">
-                  {profile.passportId}
-                </Badge>
-              </div>
-              <p className="text-xs sm:text-sm text-text-secondary">{profile.headline}</p>
-              <div className="flex items-center gap-3 text-xs text-text-secondary pt-0.5">
-                <span className="flex items-center gap-1">
-                  <Globe className="h-3 w-3" />
-                  {profile.country}
-                </span>
-                <span>·</span>
-                <span>{profile.timezone}</span>
-              </div>
-            </div>
+      {/* Header */}
+      <div className="space-y-2">
+        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-brand-growth">
+          <Award className="h-4 w-4" />
+          <span>Skill Passport</span>
+        </div>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-text-primary">
+              {profile.fullName}
+            </h1>
+            {profile.headline && (
+              <p className="text-sm text-text-secondary mt-1">{profile.headline}</p>
+            )}
           </div>
-
-          <div className="flex items-center gap-3 self-start sm:self-center">
-            <Button variant="outline" size="sm" onClick={handleCopyPassportLink}>
-              {copiedLink ? (
-                <>
-                  <Check className="h-3.5 w-3.5 mr-1 text-brand-growth" />
-                  <span>Link Copied</span>
-                </>
+          <div className="flex items-center gap-2">
+            <Button variant="secondary" onClick={copyShareLink}>
+              {copied ? (
+                <><Check className="h-4 w-4 mr-1.5 text-emerald-400" /> Copied!</>
               ) : (
-                <>
-                  <Share2 className="h-3.5 w-3.5 mr-1" />
-                  <span>Share Verified Passport</span>
-                </>
+                <><Copy className="h-4 w-4 mr-1.5" /> Share Passport</>
               )}
             </Button>
-          </div>
-        </div>
-
-        {/* Core Verification Telemetry */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-4 border-t border-border-subtle">
-          <div className="p-3 rounded-xl border border-border-subtle bg-surface-subtle">
-            <div className="text-[11px] text-text-secondary font-medium uppercase">Reputation</div>
-            <div className="flex items-center gap-1.5 mt-1 font-bold text-lg text-text-primary">
-              <ShieldCheck className="h-4 w-4 text-brand-growth" />
-              <span>{profile.reputationScore.toFixed(1)}%</span>
-            </div>
-          </div>
-
-          <div className="p-3 rounded-xl border border-border-subtle bg-surface-subtle">
-            <div className="text-[11px] text-text-secondary font-medium uppercase">Verified Badges</div>
-            <div className="flex items-center gap-1.5 mt-1 font-bold text-lg text-text-primary">
-              <Award className="h-4 w-4 text-blue-400" />
-              <span>{skills.length}</span>
-            </div>
-          </div>
-
-          <div className="p-3 rounded-xl border border-border-subtle bg-surface-subtle">
-            <div className="text-[11px] text-text-secondary font-medium uppercase">Completed Contracts</div>
-            <div className="flex items-center gap-1.5 mt-1 font-bold text-lg text-text-primary">
-              <CheckCircle2 className="h-4 w-4 text-brand-growth" />
-              <span>{profile.completedTasksCount}</span>
-            </div>
-          </div>
-
-          <div className="p-3 rounded-xl border border-border-subtle bg-surface-subtle">
-            <div className="text-[11px] text-text-secondary font-medium uppercase">Dispute Rate</div>
-            <div className="flex items-center gap-1.5 mt-1 font-bold text-lg text-text-primary font-mono">
-              0.0%
-            </div>
+            <Link href="/profile">
+              <Button variant="ghost">Edit Profile</Button>
+            </Link>
           </div>
         </div>
       </div>
 
-      {/* Main Content Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left 2 Cols: Verified Skills & Cryptographic Evidence */}
-        <div className="lg:col-span-2 space-y-6">
-          <Card>
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="text-base font-bold">
-                    Verified Competencies & Practical Evidence
-                  </CardTitle>
-                  <CardDescription className="text-xs">
-                    Every badge represents an audited technical artifact or client milestone.
-                  </CardDescription>
-                </div>
-                <Badge variant="growth">{skills.length} Badges</Badge>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {skills.map((skill) => (
-                <div
-                  key={skill.id}
-                  className="p-4 rounded-xl border border-border-subtle bg-surface-subtle/50 space-y-2.5"
-                >
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h3 className="text-sm font-bold text-text-primary">{skill.name}</h3>
-                        <Badge
-                          variant={skill.tier === "PROJECT_VERIFIED" ? "growth" : "focus"}
-                          className="text-[10px]"
-                        >
-                          {skill.tier.replace("_", " ")}
-                        </Badge>
-                      </div>
-                      <div className="text-xs text-text-secondary mt-0.5">
-                        Category: {skill.category} · Verified on {skill.verifiedAt}
-                      </div>
-                    </div>
+      {/* Reputation & Stats */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="rounded-xl border border-border-subtle bg-surface-subtle p-4">
+          <div className="text-[11px] text-text-secondary uppercase tracking-wider">Reputation</div>
+          <div className="flex items-center gap-1.5 mt-1">
+            <ShieldCheck className="h-4 w-4 text-brand-growth" />
+            <span className="text-xl font-black text-text-primary">
+              {Number(profile.reputationScore).toFixed(1)}
+            </span>
+          </div>
+        </div>
+        <div className="rounded-xl border border-border-subtle bg-surface-subtle p-4">
+          <div className="text-[11px] text-text-secondary uppercase tracking-wider">Verified Skills</div>
+          <div className="flex items-center gap-1.5 mt-1">
+            <Award className="h-4 w-4 text-emerald-400" />
+            <span className="text-xl font-black text-text-primary">{profile.verifiedSkillsCount}</span>
+          </div>
+        </div>
+        <div className="rounded-xl border border-border-subtle bg-surface-subtle p-4">
+          <div className="text-[11px] text-text-secondary uppercase tracking-wider">Completed Projects</div>
+          <div className="flex items-center gap-1.5 mt-1">
+            <Briefcase className="h-4 w-4 text-blue-400" />
+            <span className="text-xl font-black text-text-primary">{profile.completedProjectsCount}</span>
+          </div>
+        </div>
+        <div className="rounded-xl border border-border-subtle bg-surface-subtle p-4">
+          <div className="text-[11px] text-text-secondary uppercase tracking-wider">Country</div>
+          <div className="text-xl font-black text-text-primary mt-1">{profile.countryCode || "—"}</div>
+        </div>
+      </div>
 
-                    {skill.score && (
-                      <div className="self-start sm:self-center font-mono font-bold text-sm text-brand-growth">
-                        Score: {skill.score}/100
-                      </div>
-                    )}
-                  </div>
-
-                  {skill.evidenceTitle && (
-                    <div className="text-xs text-text-secondary bg-surface p-2.5 rounded-lg border border-border-subtle/60 space-y-1">
-                      <div className="font-medium text-text-primary">Evaluated Artifact:</div>
-                      <p>{skill.evidenceTitle}</p>
-                      {skill.evidenceHash && (
-                        <div className="flex items-center gap-1 font-mono text-[10px] text-text-secondary/80 pt-1">
-                          <Hash className="h-3 w-3 text-brand-growth shrink-0" />
-                          <span className="truncate">{skill.evidenceHash}</span>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-
-          {/* Client Reviews & 360 Feedback */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base font-bold">Client Validations & Reviews</CardTitle>
-              <CardDescription className="text-xs">
-                Feedback attached to completed, funded marketplace contracts.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="p-4 rounded-xl border border-border-subtle bg-surface-subtle/50 space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1 text-amber-400">
-                    {[...Array(5)].map((_, i) => (
-                      <Star key={i} className="h-3.5 w-3.5 fill-amber-400" />
-                    ))}
-                    <span className="ml-1 text-xs font-bold text-text-primary">5.0</span>
-                  </div>
-                  <span className="text-[11px] text-text-secondary">September 3, 2026</span>
-                </div>
-                <p className="text-xs sm:text-sm text-text-primary leading-relaxed">
-                  "Marvellous parsed our log files with precision, flagged two zero-day anomalies, and delivered 4 hours before deadline. Exceptional communicator. Will re-hire for upcoming infrastructure hardening."
-                </p>
-                <div className="text-xs text-text-secondary pt-1 border-t border-border-subtle/40 flex justify-between">
-                  <span>Contract: Log Ingestion Script</span>
-                  <span className="font-semibold text-text-primary">Lead DevOps · CloudOps Global</span>
-                </div>
-              </div>
-
-              <div className="p-4 rounded-xl border border-border-subtle bg-surface-subtle/50 space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1 text-amber-400">
-                    {[...Array(5)].map((_, i) => (
-                      <Star key={i} className="h-3.5 w-3.5 fill-amber-400" />
-                    ))}
-                    <span className="ml-1 text-xs font-bold text-text-primary">5.0</span>
-                  </div>
-                  <span className="text-[11px] text-text-secondary">August 29, 2026</span>
-                </div>
-                <p className="text-xs sm:text-sm text-text-primary leading-relaxed">
-                  "Normalized multi-store sales schemas cleanly and documented migration scripts. Clean SQL syntax and prompt delivery."
-                </p>
-                <div className="text-xs text-text-secondary pt-1 border-t border-border-subtle/40 flex justify-between">
-                  <span>Contract: Merchant Sales Normalization</span>
-                  <span className="font-semibold text-text-primary">Data Lead · Apex Data Labs</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+      {/* Verified Skills */}
+      <div className="space-y-4">
+        <div>
+          <h2 className="text-lg font-bold text-text-primary">Verified Skills</h2>
+          <p className="text-xs text-text-secondary mt-1">
+            Skills with graded evidence from practical challenges or client validation.
+          </p>
         </div>
 
-        {/* Right Col: Transparent Reputation Factor Breakdown */}
-        <div className="space-y-6">
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base font-bold">Reputation Integrity Factors</CardTitle>
-              <CardDescription className="text-xs">
-                No opaque black-box AI scores. Calculated from verifiable delivery factors.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3 text-xs">
-              <div className="flex justify-between items-center p-2.5 rounded-lg bg-surface-subtle border border-border-subtle">
-                <span className="text-text-secondary">On-Time Milestone Delivery</span>
-                <span className="font-mono font-bold text-brand-growth">100% (4/4)</span>
+        {verifiedSkills.length === 0 ? (
+          <div className="rounded-xl border border-border-subtle bg-surface-subtle p-5 text-sm text-text-secondary space-y-2">
+            <p>No verified skills yet.</p>
+            <Link href="/learn" className="text-brand-growth hover:underline text-xs flex items-center gap-1">
+              Complete a practical challenge to earn your first verified badge <ArrowRight className="h-3 w-3" />
+            </Link>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {verifiedSkills.map((s: any) => (
+              <div key={s.slug} className="rounded-xl border border-emerald-800/40 bg-emerald-950/10 p-4 space-y-2">
+                <div className="flex items-center justify-between">
+                  <Badge variant="growth" className="text-[10px]">{s.tier}</Badge>
+                  {s.confidenceScore > 0 && (
+                    <span className="font-mono text-xs text-brand-growth font-bold">{s.confidenceScore}/100</span>
+                  )}
+                </div>
+                <h4 className="text-sm font-bold text-text-primary">{s.name}</h4>
+                <p className="text-[11px] text-text-secondary">{s.category}</p>
+                {s.verifiedAt && (
+                  <div className="text-[10px] text-emerald-400 flex items-center gap-1">
+                    <CheckCircle2 className="h-3 w-3" />
+                    Verified {new Date(s.verifiedAt).toLocaleDateString()}
+                  </div>
+                )}
               </div>
-              <div className="flex justify-between items-center p-2.5 rounded-lg bg-surface-subtle border border-border-subtle">
-                <span className="text-text-secondary">Practical Rubric Average</span>
-                <span className="font-mono font-bold text-text-primary">91.2/100</span>
-              </div>
-              <div className="flex justify-between items-center p-2.5 rounded-lg bg-surface-subtle border border-border-subtle">
-                <span className="text-text-secondary">Client Rating Average</span>
-                <span className="font-mono font-bold text-amber-400">5.0 ★</span>
-              </div>
-              <div className="flex justify-between items-center p-2.5 rounded-lg bg-surface-subtle border border-border-subtle">
-                <span className="text-text-secondary">Revision Request Rate</span>
-                <span className="font-mono font-bold text-text-primary">0.0%</span>
-              </div>
+            ))}
+          </div>
+        )}
 
-              <div className="pt-3 border-t border-border-subtle text-text-secondary leading-relaxed text-[11px]">
-                UPORA allows talent to file disputes against inaccurate client ratings or unfair assessment deductions with guaranteed human review.
-              </div>
-            </CardContent>
-          </Card>
+        {selfReportedSkills.length > 0 && (
+          <div className="rounded-xl border border-border-subtle bg-surface-subtle p-4">
+            <div className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2">
+              Self-Reported (unverified)
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {selfReportedSkills.map((s: any) => (
+                <span
+                  key={s.slug}
+                  className="text-[11px] px-2.5 py-1 rounded-full border border-amber-800/40 bg-amber-950/10 text-amber-300"
+                >
+                  {s.name}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Portfolio */}
+      {portfolioItems.length > 0 && (
+        <div className="space-y-4">
+          <div>
+            <h2 className="text-lg font-bold text-text-primary">Portfolio & Evidence</h2>
+            <p className="text-xs text-text-secondary mt-1">
+              Verified entries are linked to graded challenge submissions.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {portfolioItems.map((item: any) => (
+              <Card key={item.id} className="border-border-subtle bg-surface">
+                <CardContent className="p-4 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Badge variant={item.verifiedBadge ? "growth" : "neutral"} className="text-[10px]">
+                      {item.verifiedBadge ? "Verified Evidence" : "Self-Published"}
+                    </Badge>
+                  </div>
+                  <h4 className="text-sm font-bold text-text-primary">{item.title}</h4>
+                  <p className="text-xs text-text-secondary line-clamp-2">{item.description}</p>
+                  <div className="flex items-center gap-3 text-[11px]">
+                    {item.liveDemoUrl && (
+                      <a href={item.liveDemoUrl} target="_blank" rel="noreferrer" className="text-brand-growth hover:underline">
+                        Demo
+                      </a>
+                    )}
+                    {item.repositoryUrl && (
+                      <a href={item.repositoryUrl} target="_blank" rel="noreferrer" className="text-brand-growth hover:underline">
+                        Repository
+                      </a>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Bio */}
+      {profile.bio && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base font-bold flex items-center gap-2">
+              <Star className="h-4 w-4 text-brand-growth" /> About
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-text-secondary leading-relaxed">{profile.bio}</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Public passport link */}
+      <div className="rounded-xl border border-border-subtle bg-surface-subtle p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="text-xs text-text-secondary">
+          <span className="font-semibold text-text-primary">Public passport visibility: </span>
+          {profile.isPassportPublic ? "Public — shareable with clients and employers." : "Private — only visible to you."}
+        </div>
+        <div className="flex items-center gap-2">
+          <Link href="/profile">
+            <Button variant="ghost" size="sm">Change visibility</Button>
+          </Link>
+          <Button variant="secondary" size="sm" onClick={copyShareLink}>
+            {copied ? "Copied!" : "Copy share link"}
+          </Button>
         </div>
       </div>
     </div>

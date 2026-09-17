@@ -7,8 +7,16 @@ const DEFAULT_JWT_SECRET =
   "upora_super_secret_jwt_key_32_characters_minimum_production_grade";
 
 function getJwtSecretKey(): Uint8Array {
-  const secret = process.env.JWT_SECRET || DEFAULT_JWT_SECRET;
-  return new TextEncoder().encode(secret);
+  if (process.env.JWT_SECRET) {
+    return new TextEncoder().encode(process.env.JWT_SECRET);
+  }
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(
+      "JWT_SECRET is not configured. Set a strong random secret in production."
+    );
+  }
+  // Local development fallback only — never rely on this in production.
+  return new TextEncoder().encode(DEFAULT_JWT_SECRET);
 }
 
 export interface SessionPayload {

@@ -5,7 +5,7 @@ export default defineConfig({
   test: {
     environment: "node",
     globals: true,
-    exclude: ["**/node_modules/**", "**/dist/**", "**/UPORA/**"],
+    exclude: ["**/node_modules/**", "**/dist/**", "**/UPORA/**", "**/.kilo/**"],
   },
   resolve: {
     alias: {

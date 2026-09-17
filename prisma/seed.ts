@@ -397,18 +397,183 @@ async function main() {
     },
   });
 
-  // 6. Marketplace Tasks
-  await prisma.marketplaceTask.create({
-    data: {
-      clientId: clientUser.id,
-      title: "Nginx Access Log Parser & Daily Summary Script",
-      description: "Write a lightweight Bash or Python script that reads gzipped daily Nginx logs and outputs a formatted Markdown summary.",
-      tier: "INTERMEDIATE",
-      budgetAmount: 140.0,
-      currency: "USD",
-      requiredSkills: ["Linux Systems Administration", "Incident Triage & SOC Reporting"],
-      deadline: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+  // 6. Additional core learning modules (one per foundational skill)
+  await prisma.learningModule.upsert({
+    where: { slug: "linux-server-hardening" },
+    update: {},
+    create: {
+      slug: "linux-server-hardening",
+      skillId: linuxSkill.id,
+      title: "Linux Server Hardening & Automation",
+      summary: "Harden a production VPS with secure SSH, firewall policies, fail2ban and a scheduled audit script.",
+      contentMarkdown: "# Linux Hardening Guide\n\nSecure SSH (key-only), UFW rulesets, fail2ban jails, and cron-driven health audits.",
+      estimatedMinutes: 45,
+      challenges: {
+        create: [
+          {
+            title: "Production VPS Hardening Audit & Automation Script",
+            problemBrief: "Produce a hardening checklist and a Bash script that audits SSH policy, firewall state, and running services.",
+            expectedDeliverableFormat: "MARKDOWN_AND_BASH",
+            rubricCriteria: {
+              criteria: [
+                { title: "SSH Security Hardening", weight: 30 },
+                { title: "Firewall & Fail2ban Configuration", weight: 30 },
+                { title: "Automation Script Correctness", weight: 25 },
+                { title: "Documentation & Clarity", weight: 15 },
+              ],
+            },
+            passingScore: 80,
+          },
+        ],
+      },
     },
+  });
+
+  await prisma.learningModule.upsert({
+    where: { slug: "docker-compose-deploy" },
+    update: {},
+    create: {
+      slug: "docker-compose-deploy",
+      skillId: dockerSkill.id,
+      title: "Docker & Compose Production Workflows",
+      summary: "Author multi-stage Dockerfiles and compose environments with health checks and logs persistence.",
+      contentMarkdown: "# Docker Workflows\n\nMulti-stage builds, non-root users, health checks, volumes, and environment isolation.",
+      estimatedMinutes: 50,
+      challenges: {
+        create: [
+          {
+            title: "Production Docker Compose Stack for a Web Service",
+            problemBrief: "Create a multi-container stack (web, api, db) with health checks, secrets, and persistent volumes.",
+            expectedDeliverableFormat: "DOCKER_COMPOSE",
+            rubricCriteria: {
+              criteria: [
+                { title: "Multi-Stage Dockerfile Quality", weight: 30 },
+                { title: "Compose Orchestration & Health Checks", weight: 30 },
+                { title: "Secrets & Volumes Handling", weight: 25 },
+                { title: "Reproducibility & Docs", weight: 15 },
+              ],
+            },
+            passingScore: 80,
+          },
+        ],
+      },
+    },
+  });
+
+  await prisma.learningModule.upsert({
+    where: { slug: "python-sales-cohort-analysis" },
+    update: {},
+    create: {
+      slug: "python-sales-cohort-analysis",
+      skillId: pythonDataSkill.id,
+      title: "Python Data Analysis with Pandas",
+      summary: "Load, clean and visualize a transactional dataset to answer a business retention question.",
+      contentMarkdown: "# Pandas Analysis\n\nDataFrames, groupby cohorts, date arithmetic, and clear chart summaries.",
+      estimatedMinutes: 50,
+      challenges: {
+        create: [
+          {
+            title: "Monthly Retention Cohort Analysis",
+            problemBrief: "Load a CSV, compute monthly revenue cohorts, and produce a summary with supporting charts described in markdown.",
+            expectedDeliverableFormat: "PYTHON_NOTEBOOK",
+            rubricCriteria: {
+              criteria: [
+                { title: "Data Cleaning & Transformation", weight: 30 },
+                { title: "Cohort Calculation Correctness", weight: 30 },
+                { title: "Insight & Visualization Quality", weight: 25 },
+                { title: "Code Readability & Comments", weight: 15 },
+              ],
+            },
+            passingScore: 80,
+          },
+        ],
+      },
+    },
+  });
+
+  await prisma.learningModule.upsert({
+    where: { slug: "landing-conversion-audit" },
+    update: {},
+    create: {
+      slug: "landing-conversion-audit",
+      skillId: growthSkill.id,
+      title: "Landing Page Conversion & SEO Audit",
+      summary: "Structure a funnel audit with measurable experiments, copy priorities, and SEO basics.",
+      contentMarkdown: "# Conversion Audit\n\nFunnel stages, event instrumentation, headline testing and retention loops.",
+      estimatedMinutes: 40,
+      challenges: {
+        create: [
+          {
+            title: "SaaS Landing Page Conversion Audit",
+            problemBrief: "Analyze a sample landing page funnel and produce prioritized, measurable experiment recommendations.",
+            expectedDeliverableFormat: "MARKDOWN_REPORT",
+            rubricCriteria: {
+              criteria: [
+                { title: "Funnel & Event Instrumentation", weight: 30 },
+                { title: "Copy & Value Proposition Analysis", weight: 30 },
+                { title: "SEO & Metadata Basics", weight: 20 },
+                { title: "Prioritized Experiment Plan", weight: 20 },
+              ],
+            },
+            passingScore: 80,
+          },
+        ],
+      },
+    },
+  });
+
+  // 6. Marketplace Tasks
+
+  // 6. Marketplace Tasks
+  async function seedTask(data: {
+    title: string;
+    description: string;
+    tier: "FOUNDATIONAL" | "INTERMEDIATE" | "ADVANCED";
+    budgetAmount: number;
+    requiredSkills: string[];
+  }) {
+    const exists = await prisma.marketplaceTask.findFirst({ where: { title: data.title } });
+    if (!exists) {
+      await prisma.marketplaceTask.create({
+        data: {
+          clientId: clientUser.id,
+          title: data.title,
+          description: data.description,
+          tier: data.tier,
+          budgetAmount: data.budgetAmount,
+          currency: "USD",
+          requiredSkills: data.requiredSkills,
+          deadline: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+        },
+      });
+    }
+  }
+
+  await seedTask({
+    title: "Nginx Access Log Parser & Daily Summary Script",
+    description:
+      "Write a lightweight Bash or Python script that reads gzipped daily Nginx logs and outputs a formatted Markdown summary of status codes, top IPs, and slow endpoints.",
+    tier: "INTERMEDIATE",
+    budgetAmount: 140.0,
+    requiredSkills: ["Linux Systems Administration", "Incident Triage & SOC Reporting"],
+  });
+
+  await seedTask({
+    title: "SQL Churn Cohort Diagnostic Query Pack",
+    description:
+      "Produce a set of SQL queries that compute monthly retention cohorts and surface the highest-risk customer segments from a provided transaction schema.",
+    tier: "FOUNDATIONAL",
+    budgetAmount: 85.0,
+    requiredSkills: ["SQL Data Modeling & Querying"],
+  });
+
+  await seedTask({
+    title: "Accessible React Component Audit & Fix",
+    description:
+      "Audit a small React component library for accessibility gaps and deliver corrected components with keyboard navigation, labels, and focus states.",
+    tier: "ADVANCED",
+    budgetAmount: 320.0,
+    requiredSkills: ["Modern React & UI Architecture"],
   });
 
   // 7. Verified Opportunities

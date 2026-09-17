@@ -40,6 +40,7 @@ interface UporaStoreContextType {
   marketplaceTasks: MarketplaceTask[];
   opportunities: OpportunityItem[];
   financials: FinancialState;
+  isHydrated: boolean;
   selectCareerPath: (pathId: string) => void;
   evaluateChallengeSubmission: (
     challengeId: string,
@@ -48,6 +49,7 @@ interface UporaStoreContextType {
   applyForTask: (taskId: string, pitch: string) => void;
   submitAndCompleteTaskMilestone: (taskId: string) => void;
   logFinancialSaving: (amount: number) => void;
+  hydrateFromServer: () => Promise<void>;
 }
 
 const UporaStoreContext = createContext<UporaStoreContextType | undefined>(
@@ -71,6 +73,7 @@ export function UporaStoreProvider({ children }: { children: React.ReactNode }) 
     useState<OpportunityItem[]>(initialOpportunities);
   const [financials, setFinancials] =
     useState<FinancialState>(initialFinancials);
+  const [isHydrated, setIsHydrated] = useState(false);
 
   // Load from localStorage if present
   useEffect(() => {
@@ -264,6 +267,82 @@ export function UporaStoreProvider({ children }: { children: React.ReactNode }) 
     });
   };
 
+  /**
+   * Replaces sample/mock store state with real server data (wallet, profile,
+   * verified skills). Call the moment a user is confirmed authenticated.
+   */
+  const hydrateFromServer = async (): Promise<void> => {
+    if (isHydrated) return;
+    try {
+      const walletRes = await fetch("/api/wallet");
+      if (walletRes.ok) {
+        const walletData = await walletRes.json();
+        const w = walletData.wallet;
+        if (w) {
+          const transactions = (walletData.transactions || []).map(
+            (tx: { amount: number; currency: string; type: string; status: string; createdAt: string }) => ({
+              id: `${tx.type}-${tx.createdAt}`,
+              title: `Payment transaction (${tx.type.toLowerCase().replace("_", " ")})`,
+              amount: Number(tx.amount),
+              type: "CREDIT" as const,
+              date: new Date(tx.createdAt).toISOString().split("T")[0],
+              status: tx.status === "SUCCESSFUL" ? ("CLEARED" as const) : ("ESCROW_HELD" as const),
+            })
+          );
+          setFinancials((prev) => ({
+            ...prev,
+            availableBalanceUSD: Number(w.availableBalance) || 0,
+            pendingEscrowUSD: Number(w.pendingEscrowBalance) || 0,
+            lifetimeEarningsUSD: Number(w.lifetimeEarnings) || 0,
+            incomeThisMonth: Number(w.lifetimeEarnings) || 0,
+            recentTransactions: transactions.length ? transactions : prev.recentTransactions,
+          }));
+        }
+      }
+
+      const profileRes = await fetch("/api/profile");
+      if (profileRes.ok) {
+        const profileData = await profileRes.json();
+        const p = profileData.profile;
+        if (p) {
+          setProfile((prev) => ({
+            ...prev,
+            fullName: p.fullName || prev.fullName,
+            headline: p.headline || prev.headline,
+            bio: p.bio || prev.bio,
+            country: p.countryCode || prev.country,
+            timezone: p.timezone || prev.timezone,
+            preferredCurrency: p.preferredCurrency || prev.preferredCurrency,
+            reputationScore: Number(p.reputationScore) || prev.reputationScore,
+            verifiedSkillsCount: Number(p.verifiedSkillsCount) || 0,
+            completedTasksCount: Number(p.completedProjectsCount) || 0,
+            targetRole: p.targetRole || prev.targetRole,
+          }));
+
+          if (Array.isArray(p.skills)) {
+            setSkills(
+              p.skills.map((s: { slug: string; name: string; category: string; tier: string; confidenceScore?: number; verifiedAt?: string }) => ({
+                id: s.slug,
+                name: s.name,
+                category: s.category || "Core Competency",
+                difficulty: "INTERMEDIATE" as const,
+                tier: s.tier as SkillItem["tier"],
+                score: Number(s.confidenceScore) || undefined,
+                verifiedAt: s.verifiedAt || undefined,
+              }))
+            );
+          }
+        }
+      }
+
+      setIsHydrated(true);
+    } catch (error) {
+      // Guest or temporary failure — keep sample state without surfacing errors.
+      console.warn("Server hydration not available; using sample state.", error);
+      setIsHydrated(true);
+    }
+  };
+
   return (
     <UporaStoreContext.Provider
       value={{
@@ -276,11 +355,13 @@ export function UporaStoreProvider({ children }: { children: React.ReactNode }) 
         marketplaceTasks,
         opportunities,
         financials,
+        isHydrated,
         selectCareerPath,
         evaluateChallengeSubmission,
         applyForTask,
         submitAndCompleteTaskMilestone,
         logFinancialSaving,
+        hydrateFromServer,
       }}
     >
       {children}

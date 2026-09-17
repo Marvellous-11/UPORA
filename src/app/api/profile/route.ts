@@ -39,6 +39,9 @@ export async function GET() {
             skill: true,
           },
         },
+        portfolioItems: {
+          orderBy: { createdAt: "desc" },
+        },
       },
     });
 
@@ -80,6 +83,15 @@ export async function GET() {
           tier: s.tier,
           confidenceScore: Number(s.confidenceScore),
           verifiedAt: s.verifiedAt,
+        })),
+        portfolioItems: profile.portfolioItems.map((item) => ({
+          id: item.id,
+          title: item.title,
+          description: item.description,
+          liveDemoUrl: item.liveDemoUrl,
+          repositoryUrl: item.repositoryUrl,
+          verifiedBadge: item.verifiedBadge,
+          createdAt: item.createdAt,
         })),
       },
     });

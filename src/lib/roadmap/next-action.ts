@@ -100,27 +100,27 @@ export async function getNextBestAction(userId: string | null | undefined): Prom
     const nextMilestone = activeRoadmap.milestones.find((m) => !m.isCompleted);
 
     if (nextMilestone) {
-      let ctaUrl = "/learning";
+      let ctaUrl = "/learn";
       let ctaLabel = "Start Learning";
 
       if (nextMilestone.actionType === "PRACTICE_PROJECT") {
-        ctaUrl = "/challenges";
+        ctaUrl = "/learn";
         ctaLabel = "Open Sandbox Challenge";
       } else if (nextMilestone.actionType === "ASSESSMENT") {
-        ctaUrl = "/learning";
+        ctaUrl = "/learn";
         ctaLabel = "Take Competency Assessment";
       } else if (nextMilestone.actionType === "APPLY_TASK") {
-        ctaUrl = "/tasks";
+        ctaUrl = "/work";
         ctaLabel = "Browse Open Micro-Tasks";
       }
 
       return {
-        actionType: "COMPLETE_MILESTONE",
+        actionType: "COMPLETE_MILESTONE" as const,
         title: nextMilestone.title,
         description: nextMilestone.description,
         ctaLabel,
         ctaUrl,
-        priority: "HIGH",
+        priority: "HIGH" as const,
         badgeText: `Milestone ${nextMilestone.stepOrder} of ${activeRoadmap.milestones.length}`,
         meta: {
           roadmapId: activeRoadmap.id,
@@ -131,14 +131,26 @@ export async function getNextBestAction(userId: string | null | undefined): Prom
     }
 
     // 6. All Milestones Complete -> Apply for Work
+    const activeContractCount = await prisma.contract.count({
+      where: {
+        talentId: userId,
+        status: { in: ["AWAITING_ESCROW", "ACTIVE", "IN_REVISION"] },
+      },
+    });
+
     return {
-      actionType: "APPLY_TO_WORK",
-      title: "Ready for Paid Marketplace Tasks",
-      description: `You have completed all milestones for ${activeRoadmap.careerPath.title}! Your verified credentials qualify you for live micro-contracts.`,
-      ctaLabel: "Browse Matched Work",
-      ctaUrl: "/tasks",
-      priority: "HIGH",
-      badgeText: "Verified Candidate",
+      actionType: "APPLY_TO_WORK" as const,
+      title: activeContractCount > 0
+        ? "Continue Your Active Contract Milestones"
+        : `Ready for Paid Marketplace Tasks`,
+      description:
+        activeContractCount > 0
+          ? `You have ${activeContractCount} active contract(s). Submit your milestone deliverables to release payments through the escrow ledger.`
+          : `You have completed all milestones for ${activeRoadmap.careerPath.title}! Your verified credentials qualify you for live micro-contracts.`,
+      ctaLabel: activeContractCount > 0 ? "Open Active Work" : "Browse Matched Work",
+      ctaUrl: "/work",
+      priority: "HIGH" as const,
+      badgeText: activeContractCount > 0 ? `${activeContractCount} Active Contract(s)` : "Verified Candidate",
     };
   } catch (error) {
     // Graceful fallback if database check encounters transient failure

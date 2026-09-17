@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db/prisma";
 import { hashPassword } from "@/lib/auth/password";
 import { createSessionToken, setSessionCookie } from "@/lib/auth/jwt";
 import { GlobalRole } from "@prisma/client";
+import { rateLimit, clientIp } from "@/lib/security/rate-limit";
 
 const RegisterSchema = z.object({
   email: z.string().email("Please provide a valid email address."),
@@ -19,6 +20,20 @@ const RegisterSchema = z.object({
 });
 
 export async function POST(request: Request) {
+  const limited = rateLimit(`register:${clientIp(request)}`, {
+    limit: 5,
+    windowMs: 60 * 60 * 1000,
+  });
+  if (!limited.allowed) {
+    return NextResponse.json(
+      {
+        error: "Too many accounts created from this network. Please try again later.",
+        retryAfterMs: limited.retryAfterMs,
+      },
+      { status: 429 }
+    );
+  }
+
   try {
     const body = await request.json();
     const validated = RegisterSchema.safeParse(body);

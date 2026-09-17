@@ -1,8 +1,8 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useUpora } from "@/lib/store/useUporaStore";
 import { useAuth } from "@/lib/auth/context";
 import { formatCurrency } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -22,11 +22,30 @@ import {
 
 export function Header() {
   const pathname = usePathname();
-  const { profile, financials } = useUpora();
   const { user, logout, isLoading } = useAuth();
+  const [walletBalance, setWalletBalance] = useState<number | null>(null);
+
+  // Fetch real wallet balance once when user is authenticated
+  useEffect(() => {
+    if (!user) {
+      setWalletBalance(null);
+      return;
+    }
+    fetch("/api/wallet")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.wallet) {
+          setWalletBalance(Number(data.wallet.availableBalance) ?? 0);
+        }
+      })
+      .catch(() => {
+        // Non-fatal — balance stays null
+      });
+  }, [user]);
 
   const navLinks = [
     { href: "/", label: "Dashboard", icon: Compass },
+    { href: "/profile", label: "Profile", icon: UserCheck },
     { href: "/discover", label: "Navigator", icon: Search },
     { href: "/learn", label: "Learn & Practice", icon: BookOpen },
     { href: "/work", label: "Workplace", icon: Briefcase },
@@ -38,7 +57,7 @@ export function Header() {
   return (
     <header className="sticky top-0 z-40 w-full border-b border-border-subtle bg-surface/95 backdrop-blur-md">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-        {/* Brand & Tagline */}
+        {/* Brand */}
         <div className="flex items-center gap-6">
           <Link href="/" className="flex items-center gap-3 group focus:outline-none">
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-growth text-canvas-dark font-black text-xl tracking-wider shadow-sm group-hover:bg-brand-growth-hover transition-colors">
@@ -46,9 +65,7 @@ export function Header() {
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="text-base font-bold tracking-tight text-text-primary">
-                  UPORA
-                </span>
+                <span className="text-base font-bold tracking-tight text-text-primary">UPORA</span>
                 <span className="hidden sm:inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold tracking-wide bg-surface-subtle text-text-secondary border border-border-subtle">
                   GLOBAL
                 </span>
@@ -82,20 +99,22 @@ export function Header() {
           </nav>
         </div>
 
-        {/* User Telemetry & Auth Section */}
+        {/* Right side: balance + auth */}
         <div className="flex items-center gap-2.5 sm:gap-4">
-          {/* Earnings / Balance Badge */}
-          <Link
-            href="/finance"
-            className="flex items-center gap-2 rounded-lg border border-border-subtle bg-surface-subtle px-3 py-1.5 text-xs transition-colors hover:border-brand-growth/50"
-          >
-            <span className="text-text-secondary hidden sm:inline">Balance:</span>
-            <span className="font-mono font-semibold text-brand-growth">
-              {formatCurrency(financials.availableBalanceUSD)}
-            </span>
-          </Link>
+          {/* Real wallet balance — only shown when authenticated */}
+          {user && (
+            <Link
+              href="/finance"
+              className="flex items-center gap-2 rounded-lg border border-border-subtle bg-surface-subtle px-3 py-1.5 text-xs transition-colors hover:border-brand-growth/50"
+            >
+              <span className="text-text-secondary hidden sm:inline">Balance:</span>
+              <span className="font-mono font-semibold text-brand-growth">
+                {walletBalance !== null ? formatCurrency(walletBalance) : "—"}
+              </span>
+            </Link>
+          )}
 
-          {/* Authentication State */}
+          {/* Auth state */}
           {user ? (
             <div className="flex items-center gap-2.5 sm:gap-3">
               <Link
@@ -112,7 +131,7 @@ export function Header() {
                   <div className="text-[10px] text-text-secondary flex items-center gap-1">
                     <span className="capitalize">{user.role.toLowerCase()}</span>
                     <span>·</span>
-                    <span className="text-brand-growth">Verified</span>
+                    <span className="text-brand-growth">Active</span>
                   </div>
                 </div>
               </Link>

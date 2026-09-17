@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
-import { useUpora } from "@/lib/store/useUporaStore";
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useAuth } from "@/lib/auth/context";
 import { formatCurrency } from "@/lib/utils";
-import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea } from "@/components/ui/input";
@@ -11,67 +12,199 @@ import { Modal } from "@/components/ui/modal";
 import { Tabs } from "@/components/ui/tabs";
 import {
   Briefcase,
-  ShieldCheck,
   CheckCircle2,
-  Lock,
-  Clock,
   ArrowRight,
-  DollarSign,
-  Send,
-  Check,
   PlusCircle,
+  AlertCircle,
 } from "lucide-react";
 
 export default function MarketplaceWorkPage() {
-  const {
-    marketplaceTasks,
-    skills,
-    applyForTask,
-    submitAndCompleteTaskMilestone,
-    financials,
-  } = useUpora();
+  const { user } = useAuth();
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState("OPEN");
 
-  const [activeTab, setActiveTab] = useState("ALL");
-  const [selectedTask, setSelectedTask] = useState<(typeof marketplaceTasks)[0] | null>(null);
+  const [tasks, setTasks] = useState<any[]>([]);
+  const [applications, setApplications] = useState<{ mine: any[]; incoming: any[] }>({ mine: [], incoming: [] });
+  const [contracts, setContracts] = useState<any[]>([]);
+
+  const [selectedTask, setSelectedTask] = useState<any>(null);
   const [proposalPitch, setProposalPitch] = useState("");
-  const [isApplying, setIsApplying] = useState(false);
   const [showApplyModal, setShowApplyModal] = useState(false);
-  const [showPostModal, setShowPostModal] = useState(false);
 
-  // New Client Task Form state
+  const [showPostModal, setShowPostModal] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newBudget, setNewBudget] = useState("150");
   const [newDesc, setNewDesc] = useState("");
   const [newTier, setNewTier] = useState<"FOUNDATIONAL" | "INTERMEDIATE" | "ADVANCED">("INTERMEDIATE");
+  const [newSkills, setNewSkills] = useState("");
+  const [newDeadline, setNewDeadline] = useState("");
 
-  const filteredTasks = marketplaceTasks.filter((task) => {
-    if (activeTab === "ALL") return true;
-    if (activeTab === "FOUNDATIONAL") return task.tier === "FOUNDATIONAL";
-    if (activeTab === "INTERMEDIATE") return task.tier === "INTERMEDIATE";
-    if (activeTab === "ADVANCED") return task.tier === "ADVANCED";
-    return true;
-  });
+  const [milestoneNote, setMilestoneNote] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false);
 
-  const handleOpenApply = (task: (typeof marketplaceTasks)[0]) => {
+  const loadAll = async () => {
+    setError(null);
+    try {
+      const [tasksRes, appsRes, contractsRes] = await Promise.all([
+        fetch("/api/tasks"),
+        fetch("/api/applications"),
+        fetch("/api/contracts"),
+      ]);
+      if (tasksRes.ok) setTasks((await tasksRes.json()).tasks || []);
+      if (appsRes.ok) setApplications((await appsRes.json()));
+      if (contractsRes.ok) setContracts((await contractsRes.json()).contracts || []);
+    } catch (e) {
+      setError("Unable to load the workplace right now.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (user) loadAll();
+    else setLoading(false);
+  }, [user]);
+
+  const openApply = (task: any) => {
     setSelectedTask(task);
     setProposalPitch(
-      `Hello ${task.clientName},\n\nI reviewed your requirements for ${task.title}. My verified Skill Passport includes demonstrated evidence in ${task.requiredSkills.join(", ")} with top-tier rubric scores.\n\nI can deliver all scoped milestones on time with complete documentation.`
+      `Hello ${task.clientName},\n\nI would like to apply for "${task.title}". My verified Skill Passport includes evidence in: ${task.requiredSkills.join(", ")}.\n\nI can deliver all scoped milestones and will keep you updated on progress.`
     );
     setShowApplyModal(true);
   };
 
-  const handleConfirmApply = () => {
+  const submitApplication = async () => {
     if (!selectedTask) return;
-    setIsApplying(true);
-    setTimeout(() => {
-      applyForTask(selectedTask.id, proposalPitch);
-      setIsApplying(false);
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/tasks/${selectedTask.id}/apply`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ proposalPitch }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Application failed.");
+        return;
+      }
       setShowApplyModal(false);
-    }, 600);
+      await loadAll();
+    } catch (e) {
+      setError("Network error while applying.");
+    } finally {
+      setBusy(false);
+    }
   };
 
-  const handleSimulateApproval = (taskId: string) => {
-    submitAndCompleteTaskMilestone(taskId);
+  const postTask = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: newTitle,
+          description: newDesc,
+          tier: newTier,
+          budgetAmount: Number(newBudget),
+          currency: "USD",
+          requiredSkills: newSkills.split(",").map((s) => s.trim()).filter(Boolean),
+          deadline: new Date(newDeadline),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Could not publish the task.");
+        return;
+      }
+      setShowPostModal(false);
+      setNewTitle("");
+      setNewBudget("150");
+      setNewDesc("");
+      setNewSkills("");
+      setNewDeadline("");
+      await loadAll();
+    } catch (e) {
+      setError("Network error while posting the task.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const reviewApplication = async (taskId: string, applicationId: string, action: "ACCEPT" | "REJECT") => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/tasks/${taskId}/applications/${applicationId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Failed to update the application.");
+        return;
+      }
+      await loadAll();
+    } catch (e) {
+      setError("Network error while reviewing the application.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const milestoneAction = async (contractId: string, milestoneId: string, action: string) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/contracts/${contractId}/milestones/${milestoneId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action,
+          deliverableNote: action === "SUBMIT" ? milestoneNote[milestoneId] : undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Milestone action failed.");
+        return;
+      }
+      setMilestoneNote((prev) => ({ ...prev, [milestoneId]: "" }));
+      await loadAll();
+    } catch (e) {
+      setError("Network error while processing the milestone.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!user) {
+    return (
+      <div className="mx-auto max-w-7xl px-4 py-12 space-y-4">
+        <h1 className="text-2xl font-bold text-text-primary">Sign in to access the workplace</h1>
+        <p className="text-sm text-text-secondary">Register and complete onboarding to unlock tier-gated tasks.</p>
+        <Link href="/login">
+          <Button variant="primary">Sign In</Button>
+        </Link>
+      </div>
+    );
+  }
+
+  const isClient = user.role === "CLIENT" || user.role === "ADMIN";
+
+  if (loading) {
+    return <div className="mx-auto max-w-7xl px-4 py-10 text-sm text-text-secondary">Loading workplace…</div>;
+  }
+
+  const tabCounts = {
+    OPEN: tasks.filter((t) => t.status === "OPEN_FOR_APPLICATIONS" && !t.isMine).length,
+    MINE: applications.mine.length,
+    INCOMING: isClient ? applications.incoming.filter((a) => a.status === "PENDING").length : 0,
+    CONTRACTS: contracts.filter((c) => c.status !== "COMPLETED").length,
   };
 
   return (
@@ -83,263 +216,313 @@ export default function MarketplaceWorkPage() {
             <Briefcase className="h-4 w-4" />
             <span>Work Quality Marketplace & Escrow</span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-text-primary">
-            Verified Work. Guaranteed Escrow.
-          </h1>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-text-primary">Verified Work. Transparent Ledger.</h1>
           <p className="text-sm sm:text-base text-text-secondary max-w-2xl">
-            Clients fund milestone escrows before work starts. Talent unlocks opportunities strictly through demonstrated, verified skill evidence.
+            Applications persist in the database. Accepted work creates contracts with milestones settled through the internal ledger until a live payment gateway is connected.
           </p>
         </div>
-
-        <Button onClick={() => setShowPostModal(true)} variant="outline">
-          <PlusCircle className="h-4 w-4 mr-1.5" />
-          <span>Post Client Task</span>
-        </Button>
+        {isClient && (
+          <Button variant="primary" onClick={() => setShowPostModal(true)}>
+            <PlusCircle className="h-4 w-4 mr-1.5" /> Post a Task
+          </Button>
+        )}
       </div>
 
-      {/* Filter Tabs */}
+      {error && (
+        <div className="p-3 rounded-lg border border-rose-800/60 bg-rose-950/30 text-rose-300 text-xs flex items-start gap-2">
+          <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+          <span>{error}</span>
+        </div>
+      )}
+
       <Tabs
         tabs={[
-          { id: "ALL", label: "All Tasks", count: marketplaceTasks.length },
-          {
-            id: "FOUNDATIONAL",
-            label: "Tier 1: Foundational",
-            count: marketplaceTasks.filter((t) => t.tier === "FOUNDATIONAL").length,
-          },
-          {
-            id: "INTERMEDIATE",
-            label: "Tier 2: Intermediate",
-            count: marketplaceTasks.filter((t) => t.tier === "INTERMEDIATE").length,
-          },
-          {
-            id: "ADVANCED",
-            label: "Tier 3: Advanced",
-            count: marketplaceTasks.filter((t) => t.tier === "ADVANCED").length,
-          },
+          { id: "OPEN", label: "Open Tasks", count: tabCounts.OPEN },
+          { id: "MINE", label: "My Applications", count: tabCounts.MINE },
+          ...(isClient ? [{ id: "INCOMING", label: "Review Applicants", count: tabCounts.INCOMING }] : []),
+          { id: "CONTRACTS", label: "Contracts & Milestones", count: tabCounts.CONTRACTS },
         ]}
         activeTab={activeTab}
         onChange={setActiveTab}
       />
 
-      {/* Task Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredTasks.map((task) => {
-          // Check if talent meets the required verified skills
-          const meetsSkills = task.requiredSkills.every((req) =>
-            skills.some((s) => s.name.toLowerCase().includes(req.toLowerCase().split(" ")[0]))
-          );
-          const isCompleted = task.status === "COMPLETED";
-
-          return (
-            <Card
-              key={task.id}
-              className={`flex flex-col justify-between transition-all ${
-                isCompleted
-                  ? "border-emerald-800/50 bg-surface-subtle/30"
-                  : "border-border-subtle hover:border-border-subtle"
-              }`}
-            >
-              <CardHeader className="space-y-3 pb-3">
-                <div className="flex items-center justify-between">
-                  <Badge variant={task.tier === "ADVANCED" ? "focus" : "growth"}>
-                    {task.tierLabel}
-                  </Badge>
-                  <div className="text-right">
-                    <div className="font-mono font-bold text-base text-brand-growth">
-                      {formatCurrency(task.budgetUSD)}
+      {/* OPEN TASKS TAB */}
+      {activeTab === "OPEN" && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {tasks.filter((t) => t.status === "OPEN_FOR_APPLICATIONS" && !t.isMine).length === 0 ? (
+            <div className="rounded-xl border border-border-subtle bg-surface-subtle p-5 text-sm text-text-secondary md:col-span-2">
+              No open tasks right now. Verify skills through practical challenges to qualify when tasks appear.
+            </div>
+          ) : (
+            tasks
+              .filter((t) => t.status === "OPEN_FOR_APPLICATIONS" && !t.isMine)
+              .map((task) => (
+                <Card key={task.id} className="border-border-subtle bg-surface hover:border-brand-growth/40 transition-all">
+                  <CardContent className="p-5 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <Badge variant="growth" className="text-[10px]">Escrow Protected</Badge>
+                      <span className="font-mono font-bold text-brand-growth text-base">
+                        {formatCurrency(task.budgetAmount, task.currency)}
+                      </span>
                     </div>
-                    <div className="text-[10px] text-text-secondary">Escrow Funded</div>
+                    <div>
+                      <h4 className="font-bold text-text-primary text-sm">{task.title}</h4>
+                      <p className="text-xs text-text-secondary mt-1 line-clamp-2">{task.description}</p>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {task.requiredSkills.slice(0, 4).map((s: string) => (
+                        <span key={s} className="text-[10px] px-2 py-0.5 rounded-full bg-surface-subtle border border-border-subtle text-text-secondary">
+                          {s}
+                        </span>
+                      ))}
+                    </div>
+                    <div className="flex items-center justify-between pt-2 border-t border-border-subtle/60 text-xs text-text-secondary">
+                      <span>Client: {task.clientName}</span>
+                      <span>{task.applicantCount} applicant(s)</span>
+                    </div>
+                    {task.myApplication ? (
+                      <Badge variant="warning" className="text-[10px]">Applied · {task.myApplication.status}</Badge>
+                    ) : (
+                      <Button size="sm" variant="primary" onClick={() => openApply(task)}>
+                        Apply With Verified Skills <ArrowRight className="h-3.5 w-3.5 ml-1" />
+                      </Button>
+                    )}
+                  </CardContent>
+                </Card>
+              ))
+          )}
+        </div>
+      )}
+
+      {/* MY APPLICATIONS TAB */}
+      {activeTab === "MINE" && (
+        <div className="space-y-3">
+          {applications.mine.length === 0 ? (
+            <div className="rounded-xl border border-border-subtle bg-surface-subtle p-5 text-sm text-text-secondary">
+              You have not applied to any tasks yet. Applications you submit appear here with their review status.
+            </div>
+          ) : (
+            applications.mine.map((a: any) => (
+              <div key={a.id} className="rounded-xl border border-border-subtle bg-surface p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="space-y-1">
+                  <div className="text-sm font-semibold text-text-primary">{a.taskTitle}</div>
+                  <div className="text-[11px] text-text-secondary">
+                    {formatCurrency(a.proposedAmount, a.currency)} · {a.clientName} · Applied {new Date(a.createdAt).toLocaleDateString()}
                   </div>
+                  <p className="text-xs text-text-secondary line-clamp-2 pt-1">{a.proposalPitch}</p>
                 </div>
+                <Badge
+                  variant={a.status === "ACCEPTED" ? "growth" : a.status === "REJECTED" ? "risk" : a.status === "WITHDRAWN" ? "neutral" : "warning"}
+                  className="text-[10px] shrink-0"
+                >
+                  {a.status}
+                </Badge>
+              </div>
+            ))
+          )}
+        </div>
+      )}
 
-                <div>
-                  <CardTitle className="text-base font-bold text-text-primary leading-snug">
-                    {task.title}
-                  </CardTitle>
-                  <CardDescription className="text-xs mt-1">
-                    Client: <strong className="text-text-primary">{task.clientName}</strong> ({task.clientRating} ★ · {task.clientCompletedJobs} completed jobs)
-                  </CardDescription>
-                </div>
-              </CardHeader>
-
-              <CardContent className="space-y-4 text-xs">
-                <p className="text-text-secondary leading-relaxed line-clamp-3">
-                  {task.description}
-                </p>
-
-                {/* Scoped Deliverables */}
-                <div className="space-y-1 rounded-lg border border-border-subtle bg-surface-subtle p-2.5">
-                  <div className="font-semibold text-text-primary text-[11px] uppercase tracking-wider">
-                    Scoped Deliverables:
+      {/* INCOMING APPLICATIONS TAB (clients only) */}
+      {activeTab === "INCOMING" && isClient && (
+        <div className="space-y-3">
+          {applications.incoming.length === 0 ? (
+            <div className="rounded-xl border border-border-subtle bg-surface-subtle p-5 text-sm text-text-secondary">
+              No incoming applications yet. Post a task to start receiving proposals.
+            </div>
+          ) : (
+            applications.incoming.map((a: any) => (
+              <div key={a.id} className="rounded-xl border border-border-subtle bg-surface p-4 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                  <div className="space-y-1">
+                    <div className="text-sm font-semibold text-text-primary">{a.talentName}</div>
+                    <div className="text-[11px] text-text-secondary">
+                      {a.taskTitle} · {formatCurrency(a.proposedAmount, a.currency)} · {a.talentVerifiedSkills} verified skill(s)
+                    </div>
+                    <p className="text-xs text-text-secondary line-clamp-3 pt-1">{a.proposalPitch}</p>
                   </div>
-                  <ul className="space-y-1 text-text-secondary">
-                    {task.deliverables.map((del, i) => (
-                      <li key={i} className="flex items-start gap-1.5">
-                        <CheckCircle2 className="h-3 w-3 text-brand-growth shrink-0 mt-0.5" />
-                        <span>{del}</span>
-                      </li>
-                    ))}
-                  </ul>
+                  <Badge
+                    variant={a.status === "ACCEPTED" ? "growth" : a.status === "REJECTED" ? "risk" : "warning"}
+                    className="text-[10px] shrink-0"
+                  >
+                    {a.status}
+                  </Badge>
                 </div>
-
-                {/* Required Verified Skills */}
-                <div className="space-y-1.5">
-                  <div className="text-text-secondary font-medium text-[11px]">
-                    Required Verified Badges:
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {task.requiredSkills.map((req) => (
-                      <Badge key={req} variant="neutral" className="text-[10px]">
-                        {req}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-              </CardContent>
-
-              <CardFooter className="pt-3 border-t border-border-subtle flex items-center justify-between">
-                <div className="text-xs text-text-secondary">
-                  {isCompleted ? (
-                    <span className="text-brand-growth font-medium flex items-center gap-1">
-                      <Check className="h-3.5 w-3.5" />
-                      Approved & Paid Out
-                    </span>
-                  ) : (
-                    <span>{task.applicantCount} proposals</span>
-                  )}
-                </div>
-
-                {isCompleted ? (
-                  <Button size="sm" variant="outline" disabled>
-                    Milestone Completed
-                  </Button>
-                ) : meetsSkills ? (
-                  <div className="flex gap-2">
-                    <Button size="sm" variant="secondary" onClick={() => handleOpenApply(task)}>
-                      Apply
-                    </Button>
+                {a.status === "PENDING" && (
+                  <div className="flex items-center gap-2 pt-2 border-t border-border-subtle/60">
                     <Button
                       size="sm"
                       variant="primary"
-                      onClick={() => handleSimulateApproval(task.id)}
-                      title="Simulate client approving your milestone and releasing escrow funds into your wallet"
+                      disabled={busy}
+                      onClick={() => reviewApplication(a.taskId, a.id, "ACCEPT")}
                     >
-                      Simulate Approval
+                      <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Accept & Create Contract
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={busy}
+                      onClick={() => reviewApplication(a.taskId, a.id, "REJECT")}
+                    >
+                      Decline
                     </Button>
                   </div>
-                ) : (
-                  <Button size="sm" variant="outline" disabled className="gap-1.5">
-                    <Lock className="h-3 w-3" />
-                    <span>Skill Badge Required</span>
-                  </Button>
                 )}
-              </CardFooter>
-            </Card>
-          );
-        })}
-      </div>
-
-      {/* Application Modal */}
-      {selectedTask && (
-        <Modal
-          isOpen={showApplyModal}
-          onClose={() => setShowApplyModal(false)}
-          title={`Apply for: ${selectedTask.title}`}
-          description={`Client: ${selectedTask.clientName} · Budget: ${formatCurrency(selectedTask.budgetUSD)} (Escrow Funded)`}
-          maxWidth="lg"
-        >
-          <div className="space-y-4">
-            <div className="p-3 rounded-lg border border-border-subtle bg-surface-subtle text-xs space-y-1">
-              <span className="font-semibold text-text-primary">Verified Evidence Attached:</span>
-              <p className="text-brand-growth">
-                Your Skill Passport badges and objective challenge scorecards are automatically attached to this application.
-              </p>
-            </div>
-
-            <Textarea
-              label="Proposal & Execution Plan"
-              rows={6}
-              value={proposalPitch}
-              onChange={(e) => setProposalPitch(e.target.value)}
-              className="text-xs font-mono"
-            />
-
-            <div className="flex items-center justify-end gap-3 pt-3 border-t border-border-subtle">
-              <Button variant="secondary" onClick={() => setShowApplyModal(false)}>
-                Cancel
-              </Button>
-              <Button variant="primary" onClick={handleConfirmApply} isLoading={isApplying}>
-                <Send className="h-3.5 w-3.5 mr-1.5" />
-                <span>Submit Proposal</span>
-              </Button>
-            </div>
-          </div>
-        </Modal>
+              </div>
+            ))
+          )}
+        </div>
       )}
 
-      {/* Post Client Task Modal */}
+      {/* CONTRACTS & MILESTONES TAB */}
+      {activeTab === "CONTRACTS" && (
+        <div className="space-y-4">
+          {contracts.length === 0 ? (
+            <div className="rounded-xl border border-border-subtle bg-surface-subtle p-5 text-sm text-text-secondary">
+              No active contracts yet. Apply to tasks or accept an applicant to create a contract.
+            </div>
+          ) : (
+            contracts.map((c: any) => (
+              <div key={c.id} className="rounded-xl border border-border-subtle bg-surface p-5 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <div className="text-sm font-bold text-text-primary">{c.taskTitle}</div>
+                    <div className="text-[11px] text-text-secondary mt-0.5">
+                      {c.myRole === "TALENT" ? `Client: ${c.clientName}` : `Talent: ${c.talentName}`} · {formatCurrency(c.totalAmount, c.currency)}
+                    </div>
+                  </div>
+                  <Badge
+                    variant={c.status === "COMPLETED" ? "growth" : c.status === "ACTIVE" ? "focus" : c.status === "DISPUTED" ? "risk" : "warning"}
+                    className="text-[10px] shrink-0"
+                  >
+                    {c.status}
+                  </Badge>
+                </div>
+
+                <div className="space-y-2">
+                  {c.milestones.map((m: any) => (
+                    <div key={m.id} className="rounded-lg border border-border-subtle bg-surface-subtle p-3 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-text-primary">{m.title}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-xs text-brand-growth">{formatCurrency(m.amount, c.currency)}</span>
+                          <Badge
+                            variant={m.status === "PAID_OUT" ? "growth" : m.status === "SUBMITTED" ? "focus" : m.status === "ESCROWED" ? "warning" : "neutral"}
+                            className="text-[9px]"
+                          >
+                            {m.status}
+                          </Badge>
+                        </div>
+                      </div>
+
+                      {/* Client: fund milestone */}
+                      {c.myRole === "CLIENT" && m.status === "PENDING_ESCROW" && (
+                        <Button size="sm" variant="primary" disabled={busy} onClick={() => milestoneAction(c.id, m.id, "FUND")}>
+                          Fund Milestone (Internal Ledger)
+                        </Button>
+                      )}
+
+                      {/* Talent: submit deliverable */}
+                      {c.myRole === "TALENT" && m.status === "ESCROWED" && (
+                        <div className="space-y-2">
+                          <Textarea
+                            label="Deliverable note"
+                            rows={3}
+                            value={milestoneNote[m.id] || ""}
+                            onChange={(e) => setMilestoneNote((prev) => ({ ...prev, [m.id]: e.target.value }))}
+                            placeholder="Describe your deliverable…"
+                          />
+                          <Button
+                            size="sm"
+                            variant="primary"
+                            disabled={busy || !milestoneNote[m.id]?.trim()}
+                            onClick={() => milestoneAction(c.id, m.id, "SUBMIT")}
+                          >
+                            Submit Deliverable
+                          </Button>
+                        </div>
+                      )}
+
+                      {/* Client: approve deliverable */}
+                      {c.myRole === "CLIENT" && m.status === "SUBMITTED" && (
+                        <div className="space-y-1">
+                          {m.deliverableNote && (
+                            <p className="text-xs text-text-secondary bg-surface p-2 rounded border border-border-subtle">{m.deliverableNote}</p>
+                          )}
+                          <Button size="sm" variant="primary" disabled={busy} onClick={() => milestoneAction(c.id, m.id, "APPROVE")}>
+                            <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Approve & Release Payment
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      )}
+
+      {/* APPLY MODAL */}
+      <Modal
+        isOpen={showApplyModal}
+        onClose={() => setShowApplyModal(false)}
+        title={`Apply: ${selectedTask?.title || ""}`}
+        description="Submit your proposal. Applications are persisted to the database."
+        maxWidth="lg"
+      >
+        <div className="space-y-4">
+          <Textarea
+            label="Proposal"
+            rows={6}
+            value={proposalPitch}
+            onChange={(e) => setProposalPitch(e.target.value)}
+          />
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setShowApplyModal(false)}>Cancel</Button>
+            <Button variant="primary" disabled={busy || proposalPitch.trim().length < 30} onClick={submitApplication}>
+              Submit Application
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* POST TASK MODAL (clients only) */}
       <Modal
         isOpen={showPostModal}
         onClose={() => setShowPostModal(false)}
-        title="Post a Scoped Client Task"
-        description="Define deliverables and fund escrow. Only talent with demonstrated badges can apply."
+        title="Post a New Task"
+        description="Tasks are published to the marketplace and open for applications."
         maxWidth="lg"
       >
-        <div className="space-y-4 text-xs">
-          <Input
-            label="Project Title"
-            placeholder="e.g. Audit Cloudflare WAF Access Logs"
-            value={newTitle}
-            onChange={(e) => setNewTitle(e.target.value)}
-          />
-
-          <div className="grid grid-cols-2 gap-4">
-            <Input
-              label="Budget (USD in Escrow)"
-              type="number"
-              value={newBudget}
-              onChange={(e) => setNewBudget(e.target.value)}
-            />
-            <div>
-              <label className="block text-xs font-medium uppercase tracking-wider text-text-secondary mb-1.5">
-                Work Tier
-              </label>
+        <div className="space-y-4">
+          <Input label="Task Title" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} required />
+          <Textarea label="Description" rows={4} value={newDesc} onChange={(e) => setNewDesc(e.target.value)} />
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="Budget (USD)" type="number" min={1} value={newBudget} onChange={(e) => setNewBudget(e.target.value)} />
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-text-primary">Tier</label>
               <select
+                className="w-full rounded-lg border border-border-subtle bg-surface px-3 py-2 text-sm text-text-primary"
                 value={newTier}
-                onChange={(e) => setNewTier(e.target.value as any)}
-                className="flex h-10 w-full rounded-lg border border-border-subtle bg-surface-subtle px-3 py-2 text-sm text-text-primary focus:border-brand-focus focus:bg-surface focus:outline-none"
+                onChange={(e) => setNewTier(e.target.value as typeof newTier)}
               >
-                <option value="FOUNDATIONAL">Tier 1: Foundational ($30-$80)</option>
-                <option value="INTERMEDIATE">Tier 2: Intermediate ($100-$250)</option>
-                <option value="ADVANCED">Tier 3: Advanced ($250+)</option>
+                <option value="FOUNDATIONAL">Foundational</option>
+                <option value="INTERMEDIATE">Intermediate</option>
+                <option value="ADVANCED">Advanced</option>
               </select>
             </div>
           </div>
-
-          <Textarea
-            label="Deliverable Scope & Brief"
-            placeholder="Describe the exact deliverables expected upon milestone completion..."
-            rows={4}
-            value={newDesc}
-            onChange={(e) => setNewDesc(e.target.value)}
-          />
-
-          <div className="p-3 rounded-lg border border-border-subtle bg-surface-subtle text-text-secondary text-[11px]">
-            Notice: Client payments are held in non-custodial milestone escrow via Stripe Connect / Paystack. Funds are only released upon your explicit approval of deliverables.
-          </div>
-
-          <div className="flex items-center justify-end gap-3 pt-3 border-t border-border-subtle">
-            <Button variant="secondary" onClick={() => setShowPostModal(false)}>
-              Cancel
-            </Button>
+          <Input label="Required Skills (comma-separated)" value={newSkills} onChange={(e) => setNewSkills(e.target.value)} placeholder="e.g. Linux, SQL, Python" />
+          <Input label="Deadline" type="date" value={newDeadline} onChange={(e) => setNewDeadline(e.target.value)} />
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setShowPostModal(false)}>Cancel</Button>
             <Button
               variant="primary"
-              onClick={() => {
-                alert("Task posted and escrow funding initiated via gateway adapter!");
-                setShowPostModal(false);
-              }}
+              disabled={busy || !newTitle.trim() || !newDesc.trim() || !newDeadline}
+              onClick={postTask}
             >
-              Deposit Escrow & Publish Task
+              Publish Task
             </Button>
           </div>
         </div>

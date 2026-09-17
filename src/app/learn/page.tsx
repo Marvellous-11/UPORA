@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useUpora } from "@/lib/store/useUporaStore";
+import { useEffect, useState } from "react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,16 +10,21 @@ import {
   ArrowRight,
   CheckCircle2,
   Clock,
-  Sparkles,
-  Lock,
 } from "lucide-react";
 
 export default function LearnPage() {
-  const { challenges, skills } = useUpora();
+  const [modules, setModules] = useState<any[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch("/api/challenges")
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error("Failed to load challenges"))))
+      .then((data) => setModules(data.modules || []))
+      .catch(() => setError("Unable to load challenges right now."));
+  }, []);
 
   return (
     <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-8">
-      {/* Header */}
       <div className="space-y-2">
         <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-brand-growth">
           <BookOpen className="h-4 w-4" />
@@ -29,101 +34,95 @@ export default function LearnPage() {
           Learn by Building. Prove by Submitting.
         </h1>
         <p className="text-sm sm:text-base text-text-secondary max-w-3xl">
-          UPORA replaces passive video watching with real-world technical deliverables. Every module culminates in an objective practical challenge evaluated against transparent industry rubrics.
+          Every module culminates in a practical challenge evaluated against a transparent rubric. Passing attaches a verified badge to your Skill Passport.
         </p>
       </div>
 
-      {/* Philosophy Callout */}
-      <div className="rounded-xl border border-border-subtle bg-surface-subtle/60 p-4 sm:p-5 flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand-growth/15 text-brand-growth font-bold text-sm">
-            6-STEP
-          </div>
-          <div>
-            <h3 className="text-sm font-bold text-text-primary">
-              Learn → Practice → Build → Assess → Feedback → Retry
-            </h3>
-            <p className="text-xs text-text-secondary">
-              Passing a challenge attaches a cryptographically verifiable badge to your Skill Passport, instantly unlocking client tasks.
-            </p>
-          </div>
+      {error && (
+        <div className="rounded-xl border border-rose-800/60 bg-rose-950/30 text-rose-300 p-4 text-sm">
+          {error}
         </div>
-      </div>
+      )}
 
-      {/* Challenges Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {challenges.map((challenge) => {
-          const isVerified = skills.some((s) => s.evidenceTitle?.includes(challenge.title.slice(0, 20)));
-
-          return (
+      {modules === null && !error ? (
+        <div className="text-sm text-text-secondary">Loading practical challenges…</div>
+      ) : modules?.length === 0 ? (
+        <div className="rounded-xl border border-border-subtle bg-surface-subtle p-6 text-sm text-text-secondary">
+          Challenges are not published yet. Run <code className="font-mono">npm run db:seed</code> to load the starter catalog.
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {modules!.map((mod) => (
             <Card
-              key={challenge.id}
+              key={mod.id}
               className="border-border-subtle hover:border-brand-growth/40 transition-all flex flex-col justify-between"
             >
               <CardHeader className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <Badge variant={isVerified ? "growth" : "neutral"} className="text-[10px]">
-                    {isVerified ? "Completed & Verified" : challenge.category}
+                  <Badge variant={mod.skillVerified ? "growth" : "neutral"} className="text-[10px]">
+                    {mod.skillVerified ? "Skill Verified" : mod.skill.category}
                   </Badge>
                   <div className="flex items-center gap-1.5 text-xs text-text-secondary">
                     <Clock className="h-3.5 w-3.5" />
-                    <span>~{challenge.estimatedHours} hrs</span>
+                    <span>~{mod.estimatedMinutes} min</span>
                   </div>
                 </div>
 
                 <div>
                   <CardTitle className="text-lg font-bold text-text-primary leading-snug">
-                    {challenge.title}
+                    {mod.title}
                   </CardTitle>
                   <CardDescription className="text-xs mt-1 leading-relaxed">
-                    {challenge.summary}
+                    {mod.summary}
                   </CardDescription>
                 </div>
               </CardHeader>
 
-              <CardContent className="space-y-4">
-                <div className="rounded-lg border border-border-subtle bg-surface-subtle p-3 space-y-1.5 text-xs">
-                  <div className="font-semibold text-text-primary">Economic Mobility Unlocked:</div>
-                  <div className="text-brand-growth font-medium">{challenge.unlocksWorkTier}</div>
+              <CardContent className="space-y-3">
+                <div className="rounded-lg border border-border-subtle bg-surface-subtle p-3 text-xs">
+                  <div className="font-semibold text-text-primary">Skill:</div>
+                  <div className="text-brand-growth font-medium">{mod.skill.name}</div>
                 </div>
 
                 <div className="space-y-1.5 text-xs">
-                  <div className="text-text-secondary font-medium uppercase tracking-wider text-[10px]">
-                    Rubric Criteria ({challenge.rubricCriteria.length} checks · Passing score: {challenge.passingScore}/100):
+                  <div className="text-text-secondary uppercase tracking-wider text-[10px]">
+                    {mod.challenges.length} challenge(s)
                   </div>
                   <ul className="space-y-1 text-text-secondary">
-                    {challenge.rubricCriteria.slice(0, 3).map((crit) => (
-                      <li key={crit.id} className="flex items-center gap-1.5">
+                    {mod.challenges.slice(0, 2).map((c: any) => (
+                      <li key={c.id} className="flex items-center gap-1.5">
                         <span className="text-brand-growth font-mono font-bold">•</span>
-                        <span>{crit.title} ({crit.weight}%)</span>
+                        <span>{c.title}</span>
                       </li>
                     ))}
                   </ul>
+                  {mod.challenges.every((c: any) => c.mySubmission?.status === "PASSED") && (
+                    <div className="text-brand-growth font-medium flex items-center gap-1">
+                      <CheckCircle2 className="h-3.5 w-3.5" /> All challenges verified
+                    </div>
+                  )}
                 </div>
 
                 <div className="pt-3 border-t border-border-subtle flex items-center justify-between">
                   <div className="text-xs text-text-secondary">
-                    {isVerified ? (
-                      <span className="text-brand-growth font-medium flex items-center gap-1">
-                        <CheckCircle2 className="h-3.5 w-3.5" />
-                        Badge in Passport
-                      </span>
+                    {mod.challenges.some((c: any) => c.mySubmission) ? (
+                      <span className="text-brand-growth font-medium">Submission on file — view status</span>
                     ) : (
-                      "Ready for submission"
+                      "Ready for your first submission"
                     )}
                   </div>
-                  <Link href={`/learn/${challenge.moduleSlug}`}>
-                    <Button size="sm" variant={isVerified ? "secondary" : "primary"}>
-                      <span>{isVerified ? "Review Submission" : "Commence Challenge"}</span>
+                  <Link href={`/learn/${mod.slug}`}>
+                    <Button size="sm" variant="primary">
+                      <span>Open Module</span>
                       <ArrowRight className="h-3.5 w-3.5 ml-1" />
                     </Button>
                   </Link>
                 </div>
               </CardContent>
             </Card>
-          );
-        })}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

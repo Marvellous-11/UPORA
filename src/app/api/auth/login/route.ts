@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db/prisma";
 import { verifyPassword } from "@/lib/auth/password";
 import { createSessionToken, setSessionCookie } from "@/lib/auth/jwt";
+import { rateLimit, clientIp } from "@/lib/security/rate-limit";
 
 const LoginSchema = z.object({
   email: z.string().email("Please provide a valid email address."),
@@ -10,6 +11,20 @@ const LoginSchema = z.object({
 });
 
 export async function POST(request: Request) {
+  const limited = rateLimit(`login:${clientIp(request)}`, {
+    limit: 8,
+    windowMs: 15 * 60 * 1000,
+  });
+  if (!limited.allowed) {
+    return NextResponse.json(
+      {
+        error: "Too many sign-in attempts. Please wait a few minutes and try again.",
+        retryAfterMs: limited.retryAfterMs,
+      },
+      { status: 429 }
+    );
+  }
+
   try {
     const body = await request.json();
     const validated = LoginSchema.safeParse(body);
